@@ -21,7 +21,11 @@ Install dependencies, The code is based on huggaface's [transformers](https://gi
 pip3 install -r requirement.txt
 pip3 install --editable ./transformers
 ```
-Then, we should install [apex](https://github.com/NVIDIA/apex) according to your environment.
+Then, we should install [apex](https://github.com/NVIDIA/apex). Note that the apex branch needs to conform to the environment. 
+
+### Default implementation environment
+
+* *linux + python3.7.13 + pytorch1.8.1 + cuda11.1*
 
 ### Download and preprocess the datasets
 Our experiments are based on two datasets: HyperRED and ACE05. Please find the links and pre-processing below:

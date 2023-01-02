@@ -1,4 +1,4 @@
-torch
+torch==1.8.1+cu111
 tqdm
 tensorboardX
 seqeval==1.2.2

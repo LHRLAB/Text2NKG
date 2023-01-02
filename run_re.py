@@ -195,8 +195,8 @@ class ACEDataset(Dataset):
         maxL = 0
         for l_idx, line in tqdm(enumerate(f)):
             
-            # if l_idx > 10:
-            #     break
+            if l_idx > 10:
+                break
             
             data = json.loads(line)
 
@@ -1204,10 +1204,10 @@ def main():
     parser = argparse.ArgumentParser()
 
     ## Required parameters
-    parser.add_argument("--dataset", default='hyperred', type=str, 
-                        help="The input dataset") # ace05
-    parser.add_argument("--data_dir", default='datasets/hyperred', type=str, 
-                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # datasets/ace05
+    parser.add_argument("--dataset", default='triple', type=str, 
+                        help="The input dataset") # triple, hyperred
+    parser.add_argument("--data_dir", default='datasets/triple', type=str, 
+                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # datasets/triple, datasets/triple
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
     parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
