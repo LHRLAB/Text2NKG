@@ -72,11 +72,12 @@ The input data format for our models is JSONL. Each line of the input file conta
   ]
 }
 ```
-
+<!-- 
 ### Trained Models
 We release our trained n-ary RE models on HyperRED and ACE datasets on [Google Drive](https://drive.google.com/drive/folders/1k_Nt_DeKRKIRd2sM766j538b1JhYm4-H?usp=sharing). 
 
-When processing end-to-end n-ary relational knowledge graph completion, we use PL-Marker trained NER models on [Google Drive](https://drive.google.com/drive/folders/1k_Nt_DeKRKIRd2sM766j538b1JhYm4-H?usp=sharing) and our Text2NKG trained n-ary RE models. 
+When processing end-to-end n-ary relational knowledge graph completion, we use PL-Marker trained NER models on [Google Drive](https://drive.google.com/drive/folders/1k_Nt_DeKRKIRd2sM766j538b1JhYm4-H?usp=sharing) and our Text2NKG trained n-ary RE models.  
+-->
 
 ## Training Script
 Download Pre-trained Language Models from [Hugging Face](https://huggingface.co/): 
