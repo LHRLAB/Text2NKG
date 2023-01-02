@@ -131,3 +131,4 @@ dmypy.json
 # new ignore
 *_models/
 datasets/
+logs/
