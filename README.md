@@ -4,25 +4,24 @@ Text2NKG：Sentence-level N-ary Relation Extraction for End-to-End N-ary relatio
 ## Overview
 ![](./figs/overview.jpg)
 
-In this work, we present a novel span representation approach, named Packed Levitated Markers,  to consider the dependencies between the spans (pairs) by strategically packing the markers in the encoder. Our approach is evaluated on two typical span (pair) representation tasks:
+<!-- In this work, we present a novel span representation approach, named Packed Levitated Markers,  to consider the dependencies between the spans (pairs) by strategically packing the markers in the encoder. Our approach is evaluated on two typical span (pair) representation tasks:
 
 1. Named Entity Recognition (NER): Adopt a group packing strategy for enabling our model to process massive spans together to consider their dependencies with limited resources.
 
 2. Relation Extraction (RE): Adopt a subject-oriented packing strategy for packing each subject and all its objects into an instance to model the dependencies between the same-subject span pairs
 
-Please find more details of this work in our paper.
+Please find more details of this work in our paper. -->
 
 
 ## Setup
 ### Install Dependencies
 
-The code is based on huggaface's [transformers](https://github.com/huggingface/transformers). 
-
-Install dependencies and [apex](https://github.com/NVIDIA/apex):
+Install dependencies, The code is based on huggaface's [transformers](https://github.com/huggingface/transformers):
 ```
 pip3 install -r requirement.txt
 pip3 install --editable ./transformers
 ```
+Then, we should install [apex](https://github.com/NVIDIA/apex) according to your environment.
 
 ### Download and preprocess the datasets
 Our experiments are based on two datasets: HyperRED and ACE05. Please find the links and pre-processing below:
@@ -42,6 +41,7 @@ The input data format for our models is JSONL. Each line of the input file conta
 {
   # document ID (please make sure doc_key can be used to identify a certain document)
   "doc_key": "CNN_ENG_20030306_083604.6",
+  "clusters": []
 
   # sentences in the document, each sentence is a list of tokens
   "sentences": [
@@ -63,7 +63,7 @@ The input data format for our models is JSONL. Each line of the input file conta
   "relations": [
     [...],
     [...],
-    [[14, 14, 10, 10, "ORG-AFF"], [14, 14, 12, 13, "ORG-AFF"], ...],
+    [[14, 14, 10, 10, "ORG-AFF", [[24, 25, "for work"]]], [14, 14, 12, 13, "ORG-AFF", [[35, 35, "for work"]]], ...],
     ...
   ]
 }
@@ -87,7 +87,7 @@ Train Text2NKG n-ary RE Models:
 ```
 python run_re.py
 ```
-
+<!-- 
 ## N-ary RE Evaluation
 The following commands can be used to run our pre-trained models on HyperRED.
 
@@ -174,4 +174,4 @@ If you use our code in your research, please cite our work:
   biburl    = {https://dblp.org/rec/conf/acl/YeL0S22.bib},
   bibsource = {dblp computer science bibliography, https://dblp.org}
 }
-```
+``` -->

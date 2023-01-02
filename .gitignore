@@ -132,3 +132,4 @@ dmypy.json
 *_models/
 datasets/
 logs/
+apex/
