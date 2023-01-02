@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-import fire
+# import fire
 import numpy as np
 from datasets import load_dataset
 from pydantic import BaseModel
