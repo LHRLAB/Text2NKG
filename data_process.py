@@ -612,8 +612,8 @@ p data_process.py process_many data/hyperred/ data/processed_tags/ --mode tags
 
 if __name__ == "__main__":
     #fire.Fire()
-    download_data("datasets/hyperred-raw/")
-    process_many("datasets/hyperred-raw/","datasets/hyperred/")
+    download_data("datasets/raw/hyperred-raw/")
+    process_many("datasets/raw/hyperred-raw/","datasets/hyperred/")
     
     # from data_process import Data
 
