@@ -158,8 +158,8 @@ class ACEDataset(Dataset):
         maxL = 0
         for l_idx, line in tqdm(enumerate(f)):
             
-            if l_idx > 1000:
-                break
+            # if l_idx > 1000:
+            #     break
             
             data = json.loads(line)
 
@@ -1270,7 +1270,7 @@ def main():
 
     parser.add_argument('--logging_steps', type=int, default=5,
                         help="Log every X updates steps.")
-    parser.add_argument('--save_steps', type=int, default=50,
+    parser.add_argument('--save_steps', type=int, default=1000,
                         help="Save checkpoint every X updates steps.")# 5000
     parser.add_argument("--eval_all_checkpoints", action='store_true',default=True,
                         help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number")
