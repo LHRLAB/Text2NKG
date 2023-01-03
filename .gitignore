@@ -133,3 +133,4 @@ dmypy.json
 datasets/
 logs/
 apex/
+result*

@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="1"
+os.environ['CUDA_VISIBLE_DEVICES']="0"
 import random
 from collections import defaultdict
 import re
@@ -118,47 +118,10 @@ class ACEDataset(Dataset):
         self.model_type = args.model_type
         self.no_sym = args.no_sym
 
-        if args.data_dir.find('ace05')!=-1:
-            self.ner_label_list = ['NIL', 'FAC', 'WEA', 'LOC', 'VEH', 'GPE', 'ORG', 'PER']
-
-            if args.no_sym:
-                label_list = ['PER-SOC', 'ART', 'ORG-AFF', 'GEN-AFF', 'PHYS', 'PART-WHOLE'] 
-                self.sym_labels = ['NIL']
-                self.label_list = self.sym_labels + label_list
-            else:
-                label_list = ['ART', 'ORG-AFF', 'GEN-AFF', 'PHYS',  'PART-WHOLE']
-                self.sym_labels = ['NIL', 'PER-SOC']
-                self.label_list = self.sym_labels + label_list
-
-        elif args.data_dir.find('ace04')!=-1:
-            self.ner_label_list = ['NIL', 'FAC', 'WEA', 'LOC', 'VEH', 'GPE', 'ORG', 'PER']
-
-            if args.no_sym:
-                label_list = ['PER-SOC', 'OTHER-AFF', 'ART', 'GPE-AFF', 'EMP-ORG', 'PHYS']
-                self.sym_labels = ['NIL']
-                self.label_list = self.sym_labels + label_list
-            else:
-                label_list = ['OTHER-AFF', 'ART', 'GPE-AFF', 'EMP-ORG', 'PHYS'] #non-sym re labels
-                self.sym_labels = ['NIL', 'PER-SOC'] #sym re labels
-                self.label_list = self.sym_labels + label_list
-
-        elif args.data_dir.find('scierc')!=-1:      
-            self.ner_label_list = ['NIL', 'Method', 'OtherScientificTerm', 'Task', 'Generic', 'Material', 'Metric']
-
-            if args.no_sym:
-                label_list = ['CONJUNCTION', 'COMPARE', 'PART-OF', 'USED-FOR', 'FEATURE-OF',  'EVALUATE-FOR', 'HYPONYM-OF']
-                self.sym_labels = ['NIL']
-                self.label_list = self.sym_labels + label_list
-            else:
-                label_list = ['PART-OF', 'USED-FOR', 'FEATURE-OF',  'EVALUATE-FOR', 'HYPONYM-OF']
-                self.sym_labels = ['NIL', 'CONJUNCTION', 'COMPARE']
-                self.label_list = self.sym_labels + label_list
-
-        else:
-            self.ner_label_list = ['NIL'] + task_ner_labels[self.args.dataset]
-            self.sym_labels = ['NIL']
-            self.label_list = ['NIL'] + task_rel_labels[self.args.dataset]
-            self.q_label_list = ['NIL'] + task_q_labels[self.args.dataset]
+        self.ner_label_list = ['NIL'] + task_ner_labels[self.args.dataset]
+        self.sym_labels = ['NIL']
+        self.label_list = ['NIL'] + task_rel_labels[self.args.dataset]
+        self.q_label_list = ['NIL'] + task_q_labels[self.args.dataset]
 
         self.global_predicted_ners = {}
         self.initialize()
@@ -195,7 +158,7 @@ class ACEDataset(Dataset):
         maxL = 0
         for l_idx, line in tqdm(enumerate(f)):
             
-            if l_idx > 10:
+            if l_idx > 1000:
                 break
             
             data = json.loads(line)
@@ -477,73 +440,94 @@ class ACEDataset(Dataset):
             m2 = obj[0]
             label = obj[1]
             
-            if x_idx % np.sqrt(len(entry['examples'])) == 0:
-                mention_pos.append((m2[0], m2[1]))
-                mention_2.append(obj[2])
+            # if x_idx % np.sqrt(len(entry['examples'])) == 0:
+            #     mention_pos.append((m2[0], m2[1]))
+            #     mention_2.append(obj[2])
 
-                w1 = int(x_idx / np.sqrt(len(entry['examples'])))
-                w2 = w1 + num_pair
+            #     w1 = int(x_idx / np.sqrt(len(entry['examples'])))
+            #     w2 = w1 + num_pair
 
-                w1 += self.max_seq_length
-                w2 += self.max_seq_length
+            #     w1 += self.max_seq_length
+            #     w2 += self.max_seq_length
                 
-                position_ids[w1] = m2[0]
-                position_ids[w2] = m2[1]
+            #     position_ids[w1] = m2[0]
+            #     position_ids[w2] = m2[1]
 
-                for xx in [w1, w2]:
-                    for yy in [w1, w2]:
-                        attention_mask[xx, yy] = 1
-                    attention_mask[xx, :L] = 1
+            #     for xx in [w1, w2]:
+            #         for yy in [w1, w2]:
+            #             attention_mask[xx, yy] = 1
+            #         attention_mask[xx, :L] = 1
 
-                labels.append(label)
-                ner_labels.append(m2[2])
+            #     labels.append(label)
+            #     ner_labels.append(m2[2])
             
             # qualifiers
             q_m2 = obj[3]
             q_label = obj[4]
             
             if x_idx % np.sqrt(len(entry['examples'])) == 0:
+                temp_mention_pos=[]
+                temp_mention_2=[]
+                temp_labels=[]
+                temp_ner_labels=[]
+
                 temp_q_mention_pos=[]
                 temp_q_mention_2=[]
                 temp_q_labels=[]
                 temp_q_ner_labels=[]
+
+            temp_mention_pos.append((m2[0], m2[1]))
+            temp_mention_2.append(obj[2])
                 
             temp_q_mention_pos.append((q_m2[0], q_m2[1]))
             temp_q_mention_2.append(obj[5])
+
+            temp_labels.append(label)
+            temp_ner_labels.append(m2[2])
 
             temp_q_labels.append(q_label)
             temp_q_ner_labels.append(q_m2[2])
             
             if (x_idx+1) % np.sqrt(len(entry['examples'])) == 0:
+                temp_mention_pos += [(0, 0)] * (num_pair - len(temp_mention_pos))  
+                temp_labels += [-1] * (num_pair - len(temp_labels)) 
+                temp_ner_labels += [-1] * (num_pair - len(temp_ner_labels))  
+
                 temp_q_mention_pos += [(0, 0)] * (num_pair - len(temp_q_mention_pos))  
                 temp_q_labels += [-1] * (num_pair - len(temp_q_labels)) 
-                temp_q_ner_labels += [-1] * (num_pair - len(temp_q_ner_labels))  
+                temp_q_ner_labels += [-1] * (num_pair - len(temp_q_ner_labels)) 
+
+                mention_pos.append(temp_mention_pos)
+                mention_2.append(temp_mention_2)
+                labels.append(temp_labels)
+                ner_labels.append(temp_ner_labels) 
                 
                 q_mention_pos.append(temp_q_mention_pos)
                 q_mention_2.append(temp_q_mention_2)
                 q_labels.append(temp_q_labels)
                 q_ner_labels.append(temp_q_ner_labels)
 
-            if self.use_typemarker:
-                l_m = '[unused%d]' % ( 2 + m2[2] + len(self.ner_label_list)*2 )
-                r_m = '[unused%d]' % ( 2 + m2[2] + len(self.ner_label_list)*3 )
-                l_m = self.tokenizer._convert_token_to_id(l_m)
-                r_m = self.tokenizer._convert_token_to_id(r_m)
-                input_ids[w1] = l_m
-                input_ids[w2] = r_m
+            # if self.use_typemarker:
+            #     l_m = '[unused%d]' % ( 2 + m2[2] + len(self.ner_label_list)*2 )
+            #     r_m = '[unused%d]' % ( 2 + m2[2] + len(self.ner_label_list)*3 )
+            #     l_m = self.tokenizer._convert_token_to_id(l_m)
+            #     r_m = self.tokenizer._convert_token_to_id(r_m)
+            #     input_ids[w1] = l_m
+            #     input_ids[w2] = r_m
 
 
         pair_L = np.sqrt(len(entry['examples']))
-        if self.args.att_left:
-            attention_mask[self.max_seq_length : self.max_seq_length+pair_L, self.max_seq_length : self.max_seq_length+pair_L] = 1
-        if self.args.att_right:
-            attention_mask[self.max_seq_length+num_pair : self.max_seq_length+num_pair+pair_L, self.max_seq_length+num_pair : self.max_seq_length+num_pair+pair_L] = 1
+        # if self.args.att_left:
+        #     attention_mask[self.max_seq_length : self.max_seq_length+pair_L, self.max_seq_length : self.max_seq_length+pair_L] = 1
+        # if self.args.att_right:
+        #     attention_mask[self.max_seq_length+num_pair : self.max_seq_length+num_pair+pair_L, self.max_seq_length+num_pair : self.max_seq_length+num_pair+pair_L] = 1
 
-        mention_pos += [(0, 0)] * (num_pair - len(mention_pos))
+        mention_pos += [[(0, 0)] * num_pair] * (num_pair - len(mention_pos))
         q_mention_pos += [[(0, 0)] * num_pair] * (num_pair - len(q_mention_pos))
-        labels += [-1] * (num_pair - len(labels))
+        labels += [[-1] * num_pair] * (num_pair - len(labels))
         q_labels += [[-1] * num_pair] * (num_pair - len(q_labels))
-        ner_labels += [-1] * (num_pair - len(ner_labels))
+        # ner_labels += [[-1] * num_pair] * (num_pair - len(ner_labels))
+        ner_labels = ner_labels[0]
         q_ner_labels += [[-1] * num_pair] * (num_pair - len(q_ner_labels))
 
         item = [torch.tensor(input_ids),
@@ -723,7 +707,7 @@ def train(args, model, tokenizer):
             re_loss = outputs[1]
             ner_loss = outputs[2]
             q_re_loss = outputs[3]
-            q_ner_loss = outputs[4]
+            # q_ner_loss = outputs[4]
 
             if args.n_gpu > 1:
                 loss = loss.mean() # mean() to average on multi-gpu parallel training
@@ -732,7 +716,7 @@ def train(args, model, tokenizer):
                 re_loss = re_loss / args.gradient_accumulation_steps
                 ner_loss = ner_loss / args.gradient_accumulation_steps
                 q_re_loss = q_re_loss / args.gradient_accumulation_steps
-                q_ner_loss = q_ner_loss / args.gradient_accumulation_steps
+                # q_ner_loss = q_ner_loss / args.gradient_accumulation_steps
 
             if args.fp16:
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
@@ -747,8 +731,8 @@ def train(args, model, tokenizer):
                 tr_ner_loss += ner_loss.item()
             if q_re_loss > 0:
                 tr_q_re_loss += q_re_loss.item()
-            if q_ner_loss > 0:
-                tr_q_ner_loss += q_ner_loss.item()
+            # if q_ner_loss > 0:
+            #     tr_q_ner_loss += q_ner_loss.item()
 
 
             if (step + 1) % args.gradient_accumulation_steps == 0:
@@ -781,8 +765,8 @@ def train(args, model, tokenizer):
                     tb_writer.add_scalar('q_RE_loss', (tr_q_re_loss - logging_q_re_loss)/args.logging_steps, global_step)
                     logging_q_re_loss = tr_q_re_loss
 
-                    tb_writer.add_scalar('q_NER_loss', (tr_q_ner_loss - logging_q_ner_loss)/args.logging_steps, global_step)
-                    logging_q_ner_loss = tr_q_ner_loss
+                    # tb_writer.add_scalar('q_NER_loss', (tr_q_ner_loss - logging_q_ner_loss)/args.logging_steps, global_step)
+                    # logging_q_ner_loss = tr_q_ner_loss
 
 
                 if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0: # valid for bert/spanbert   #   
@@ -790,8 +774,8 @@ def train(args, model, tokenizer):
                     # Save model checkpoint
                     if args.evaluate_during_training:  # Only evaluate when single GPU otherwise metrics may not average well
                         results = evaluate(args, model, tokenizer)
-                        f1 = results['f1_with_ner']
-                        tb_writer.add_scalar('f1_with_ner', f1, global_step)
+                        f1 = results['q_f1'] # f1 = results['f1_with_ner']
+                        tb_writer.add_scalar('q_f1', f1, global_step) # tb_writer.add_scalar('f1_with_ner', f1, global_step)
 
                         if f1 > best_f1:
                             best_f1 = f1
@@ -923,18 +907,20 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 #     obj = m2s[j]
                 #     ner_label = eval_dataset.ner_label_list[ner_preds[i,j]]
                 #     scores[(index[0], index[1])][( (sub[0], sub[1]), (obj[0], obj[1]))] = (logits[i, j].tolist(), ner_label)
-
+                # joint-label at here
                 for j in range(len(m2s)):
-                    obj = m2s[j]
                     ner_label = eval_dataset.ner_label_list[ner_preds[i,j]]
                     for k in range(len(q_m2s[j])):
+                        obj = m2s[j][k]
                         q = q_m2s[j][k]
                         q_ner_label = eval_dataset.ner_label_list[q_ner_preds[i,j,k]]
                         scores[(index[0], index[1])][( (sub[0], sub[1]), (obj[0], obj[1]),(q[0], q[1]))] = (logits[i, j, k].tolist(), ner_label,q_logits[i, j, k].tolist(), q_ner_label)
     
     cor = 0 
+    q_cor = 0
     tot_pred = 0
     cor_with_ner = 0
+    q_cor_with_ner = 0
     global_predicted_ners = eval_dataset.global_predicted_ners
     ner_golden_labels = eval_dataset.ner_golden_labels
     ner_cor = 0 
@@ -1041,11 +1027,15 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 ## qul predict
                 if pred_label in sym_labels:
                     tot_pred += 1 # duplicate
-                    if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels or (example_index, m2, m1, pred_label, m3, q_pred_label) in q_golden_labels:
+                    if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
                         cor += 2
+                    if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels or (example_index, m2, m1, pred_label, m3, q_pred_label) in q_golden_labels:
+                        q_cor += 2
                 else:
-                    if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels:
+                    if (example_index, m1, m2, pred_label) in golden_labels:
                         cor += 1   
+                    if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels:
+                        q_cor += 1   
 
                 if m1 not in pos2ner:
                     pos2ner[m1] = item[4]
@@ -1056,12 +1046,17 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
 
                 output_preds.append((m1, m2, pred_label, m3, q_pred_label))
                 if pred_label in sym_labels:
+                    if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner  \
+                            or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label) in golden_labels_withner:
+                        cor_with_ner += 2
                     if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner  \
                             or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
-                        cor_with_ner += 2
+                        q_cor_with_ner += 2
                 else:  
+                    if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
+                        cor_with_ner += 1   
                     if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
-                        cor_with_ner += 1      
+                        q_cor_with_ner += 1      
 
             if do_test:
                 #output_w.write(json.dumps(output_preds) + '\n')
@@ -1183,18 +1178,36 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     ner_f1 = 2 * (ner_p * ner_r) / (ner_p + ner_r) if ner_cor > 0 else 0.0
 
     p = cor / tot_pred if tot_pred > 0 else 0 
-    r = cor / q_tot_recall 
+    r = cor / tot_recall 
     f1 = 2 * (p * r) / (p + r) if cor > 0 else 0.0
+    assert(tot_recall==len(golden_labels))
+
+    q_p = q_cor / tot_pred if tot_pred > 0 else 0 
+    q_r = q_cor / q_tot_recall 
+    q_f1 = 2 * (q_p * q_r) / (q_p + q_r) if q_cor > 0 else 0.0
     assert(q_tot_recall==len(q_golden_labels))
 
     p_with_ner = cor_with_ner / tot_pred if tot_pred > 0 else 0 
-    r_with_ner = cor_with_ner / q_tot_recall
-    assert(q_tot_recall==len(q_golden_labels_withner))
+    r_with_ner = cor_with_ner / tot_recall
+    assert(tot_recall==len(golden_labels_withner))
     f1_with_ner = 2 * (p_with_ner * r_with_ner) / (p_with_ner + r_with_ner) if cor_with_ner > 0 else 0.0
 
-    results = {'f1':  f1,  'f1_with_ner': f1_with_ner, 'ner_f1': ner_f1}
+    q_p_with_ner = q_cor_with_ner / tot_pred if tot_pred > 0 else 0 
+    q_r_with_ner = q_cor_with_ner / q_tot_recall
+    assert(q_tot_recall==len(q_golden_labels_withner))
+    q_f1_with_ner = 2 * (q_p_with_ner * q_r_with_ner) / (q_p_with_ner + q_r_with_ner) if q_cor_with_ner > 0 else 0.0
+
+    results = {'f1':  f1,  'f1_with_ner': f1_with_ner, 'q_f1':  q_f1, 'q_f1_with_ner': q_f1_with_ner,'ner_f1': ner_f1}
 
     logger.info("Result: %s", json.dumps(results))
+
+    results_p = {'p':  p,  'p_with_ner': p_with_ner, 'q_p':  q_p, 'q_p_with_ner': q_p_with_ner,'ner_p': ner_p}
+
+    logger.info("Result: %s", json.dumps(results_p))
+
+    results_r = {'r':  r,  'r_with_ner': r_with_ner, 'q_r':  q_r, 'q_r_with_ner': q_r_with_ner,'ner_r': ner_r}
+
+    logger.info("Result: %s", json.dumps(results_r))
 
     return results
 
@@ -1204,16 +1217,15 @@ def main():
     parser = argparse.ArgumentParser()
 
     ## Required parameters
-    parser.add_argument("--dataset", default='triple', type=str, 
-                        help="The input dataset") # triple, hyperred
+    parser.add_argument("--dataset", default='hyperred', type=str, help="The input dataset") # hyperred
     parser.add_argument("--data_dir", default='datasets/hyperred', type=str, 
-                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # datasets/triple, datasets/hyperred
+                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # datasets/hyperred
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
     parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
     parser.add_argument("--output_dir", default="hyperredre_models/hyperredre-bert-42", type=str, 
-                        help="The output directory where the model predictions and checkpoints will be written.") # "triple_models/triplere-bert-42", "hyperredre_models/hyperredre-bert-42"
+                        help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre-bert-42"
 
     ## Other parameters
     parser.add_argument("--config_name", default="", type=str,
@@ -1258,8 +1270,8 @@ def main():
 
     parser.add_argument('--logging_steps', type=int, default=5,
                         help="Log every X updates steps.")
-    parser.add_argument('--save_steps', type=int, default=5000,
-                        help="Save checkpoint every X updates steps.")
+    parser.add_argument('--save_steps', type=int, default=50,
+                        help="Save checkpoint every X updates steps.")# 5000
     parser.add_argument("--eval_all_checkpoints", action='store_true',default=True,
                         help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number")
     parser.add_argument("--no_cuda", action='store_true',
@@ -1290,7 +1302,7 @@ def main():
     parser.add_argument("--n-ary_schema",  default="hyper-relational", type=str) # "triple-based", "hypergraph", "role", "hyper-relational"
     
     parser.add_argument('--max_pair_length', type=int, default=32,  help="")
-    parser.add_argument("--alpha", default=1.0, type=float)
+    parser.add_argument("--alpha", default=0.000001, type=float)#1.0
     parser.add_argument('--save_results', action='store_true')
     parser.add_argument('--no_test', action='store_true')
     parser.add_argument('--eval_logsoftmax', action='store_true',default=True)
@@ -1365,25 +1377,9 @@ def main():
     # Set seed
     set_seed(args)
 
-    # ACE05 set num_ner_labels = 8, num_labels = 12
-    if args.data_dir.find('ace')!=-1:
-        num_ner_labels = 8
-
-        if args.no_sym:
-            num_labels = 7 + 7 - 1
-        else:
-            num_labels = 7 + 7 - 2
-    elif args.data_dir.find('scierc')!=-1:
-        num_ner_labels = 7
-
-        if args.no_sym:
-            num_labels = 8 + 8 - 1
-        else:
-            num_labels = 8 + 8 - 3
-    else:
-        num_labels = len(task_rel_labels[args.dataset])+1
-        num_ner_labels = len(task_ner_labels[args.dataset])+1
-        num_q_labels = len(task_q_labels[args.dataset])+1
+    num_labels = len(task_rel_labels[args.dataset])+1
+    num_ner_labels = len(task_ner_labels[args.dataset])+1
+    num_q_labels = len(task_q_labels[args.dataset])+1
 
     # Load pretrained model and tokenizer
     if args.local_rank not in [-1, 0]:
@@ -1469,7 +1465,7 @@ def main():
         update = True
         if args.evaluate_during_training:
             results = evaluate(args, model, tokenizer)
-            f1 = results['f1_with_ner']
+            f1 = results['q_f1'] # f1 = results['f1_with_ner']
             if f1 > best_f1:
                 best_f1 = f1
                 print ('Best F1', best_f1)
