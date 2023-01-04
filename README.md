@@ -49,8 +49,6 @@ python hyperred_data_process.py
 python hyperace05_data_process.py
 ```
 
-### Input data format
-
 The input data format for our models is JSONL. Each line of the input file contains one document in the following format.
 ```
 {
@@ -89,8 +87,8 @@ We release our trained n-ary RE models on HyperRED and ACE datasets on [Google D
 
 When processing end-to-end n-ary relational knowledge graph completion, we use PL-Marker trained NER models on [Google Drive](https://drive.google.com/drive/folders/1k_Nt_DeKRKIRd2sM766j538b1JhYm4-H?usp=sharing) and our Text2NKG trained n-ary RE models.  
 -->
+### Download PLMs
 
-## Training
 Download Pre-trained Language Models from [Hugging Face](https://huggingface.co/): 
 ```
 mkdir -p bert_models/bert-base-uncased
@@ -98,6 +96,8 @@ wget -P bert_models/bert-base-uncased https://huggingface.co/bert-base-uncased/r
 wget -P bert_models/bert-base-uncased https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt
 wget -P bert_models/bert-base-uncased https://huggingface.co/bert-base-uncased/resolve/main/config.json
 ```
+
+## Training
 
 Train Text2NKG n-ary RE Models:
 ```

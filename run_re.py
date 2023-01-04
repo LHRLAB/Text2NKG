@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="3"
+os.environ['CUDA_VISIBLE_DEVICES']="0"
 import random
 from collections import defaultdict
 import re
@@ -1331,7 +1331,7 @@ def main():
     parser.add_argument("--n-ary_schema",  default="hyper-relational", type=str) # "triple-based", "hypergraph", "role", "hyper-relational"
     
     parser.add_argument('--max_pair_length', type=int, default=32,  help="")
-    parser.add_argument("--alpha", default=1.0, type=float)#1.0
+    parser.add_argument("--alpha", default=0.5, type=float)#1.0
     parser.add_argument('--save_results', action='store_true')
     parser.add_argument('--no_test', action='store_true')
     parser.add_argument('--eval_logsoftmax', action='store_true',default=True)
