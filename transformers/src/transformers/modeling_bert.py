@@ -2283,8 +2283,12 @@ class BertForACEBothOneDropoutSub(BertPreTrainedModel):
         feature_vector = torch.cat([e1_hidden_states, e2_hidden_states], dim=2)
 
         ner_prediction_scores = self.ner_classifier(feature_vector)
+
+        # relation_feature
+        r_feature_vector = torch.stack(([feature_vector]*ent_len),dim=2)
+        # r_ner_prediction_scores = self.ner_classifier(q_feature_vector)        
         
-        # qulifier_ner
+        # qulifier_feature
         q_feature_vector = torch.stack(([feature_vector]*ent_len),dim=1)
         q_ner_prediction_scores = self.ner_classifier(q_feature_vector)
 
@@ -2295,31 +2299,31 @@ class BertForACEBothOneDropoutSub(BertPreTrainedModel):
 
         ##
         m1_scores = self.re_classifier_m1(m1_states)  # bsz, num_label
-        m2_scores = self.re_classifier_m2(feature_vector) # bsz, ent_len, num_label
+        m2_scores = self.re_classifier_m2(r_feature_vector) # bsz, ent_len, num_label
         m3_scores = self.re_classifier_m3(q_feature_vector)
-        re_prediction_scores = (m1_scores.unsqueeze(1) + m2_scores).unsqueeze(2) + m3_scores
+        re_prediction_scores = m1_scores.unsqueeze(1).unsqueeze(2) + m2_scores + m3_scores
         
         ## qulifier_re
         q_m1_scores = self.q_re_classifier_m1(m1_states)  # bsz, num_label
-        q_m2_scores = self.q_re_classifier_m2(feature_vector) # bsz, ent_len, num_label
+        q_m2_scores = self.q_re_classifier_m2(r_feature_vector) # bsz, ent_len, num_label
         q_m3_scores = self.q_re_classifier_m3(q_feature_vector)
-        q_re_prediction_scores = (q_m1_scores.unsqueeze(1) + q_m2_scores).unsqueeze(2) + q_m3_scores      
+        q_re_prediction_scores = q_m1_scores.unsqueeze(1).unsqueeze(2) + q_m2_scores + q_m3_scores      
 
-        outputs = (re_prediction_scores, ner_prediction_scores, q_re_prediction_scores, q_ner_prediction_scores) + outputs[2:]  # Add hidden states and attention if they are here
+        outputs = (re_prediction_scores, ner_prediction_scores, q_re_prediction_scores, q_ner_prediction_scores) #+ outputs[2:]  # Add hidden states and attention if they are here
 
         if labels is not None:
-            labels = torch.stack(([labels]*ent_len),dim=1)
-            labels = torch.where(q_labels==-1,-1,labels)
+            # labels = torch.stack(([labels]*ent_len),dim=1)
+            # labels = torch.where(q_labels==-1,-1,labels)
             loss_fct_re = CrossEntropyLoss(ignore_index=-1,  weight=self.alpha.to(re_prediction_scores))
             loss_fct_ner = CrossEntropyLoss(ignore_index=-1,  weight=self.ner_alpha.to(ner_prediction_scores))
             loss_fct_q_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q_re_prediction_scores))
             re_loss = loss_fct_re(re_prediction_scores.view(-1, self.num_labels), labels.view(-1))
             ner_loss = loss_fct_ner(ner_prediction_scores.view(-1, self.num_ner_labels), ner_labels.view(-1))
             q_re_loss = loss_fct_q_re(q_re_prediction_scores.view(-1, self.num_q_labels), q_labels.view(-1))
-            q_ner_loss = loss_fct_ner(q_ner_prediction_scores.view(-1, self.num_ner_labels), q_ner_labels.view(-1))
+            # q_ner_loss = loss_fct_ner(q_ner_prediction_scores.view(-1, self.num_ner_labels), q_ner_labels.view(-1))
 
-            loss = re_loss + ner_loss + q_re_loss + q_ner_loss
-            outputs = (loss, re_loss, ner_loss, q_re_loss, q_ner_loss) + outputs
+            loss = re_loss + ner_loss + q_re_loss
+            outputs = (loss, re_loss, ner_loss, q_re_loss) + outputs
 
         return outputs  # (masked_lm_loss), prediction_scores, (hidden_states), (attentions)
 

@@ -14,27 +14,40 @@ Please find more details of this work in our paper. -->
 
 
 ## Setup
+
+### Default implementation environment
+
+* *Linux(SSH) + Python3.7.13 + Pytorch1.8.1 + Cuda11.1*
+
+```
+pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
+```
+
 ### Install Dependencies
 
 Install dependencies, The code is based on huggaface's [transformers](https://github.com/huggingface/transformers):
 ```
-pip3 install -r requirement.txt
-pip3 install --editable ./transformers
+pip install -r requirement.txt
+pip install --editable ./transformers
 ```
-Then, we should install [apex](https://github.com/NVIDIA/apex) according to your environment.
+Then, we should install [apex](https://github.com/NVIDIA/apex). For SSH environment:
+```
+git clone git@github.com:NVIDIA/apex.git
+cd apex
+python setup.py install
+cd ..
+```
 
 ### Download and preprocess the datasets
-Our experiments are based on two datasets: HyperRED and ACE05. Please find the links and pre-processing below:
+Our experiments are based on two datasets: HyperRED and HyperACE05. Please find the links and pre-processing below:
 * HyperRED : 
 ```
 python hyperred_data_process.py
 ```
-* ACE05: 
+* HyperACE05: 
 ```
-python ace05_data_process.py
+python hyperace05_data_process.py
 ```
-
-### Input data format
 
 The input data format for our models is JSONL. Each line of the input file contains one document in the following format.
 ```
@@ -68,13 +81,14 @@ The input data format for our models is JSONL. Each line of the input file conta
   ]
 }
 ```
-
+<!-- 
 ### Trained Models
 We release our trained n-ary RE models on HyperRED and ACE datasets on [Google Drive](https://drive.google.com/drive/folders/1k_Nt_DeKRKIRd2sM766j538b1JhYm4-H?usp=sharing). 
 
-When processing end-to-end n-ary relational knowledge graph completion, we use PL-Marker trained NER models on [Google Drive](https://drive.google.com/drive/folders/1k_Nt_DeKRKIRd2sM766j538b1JhYm4-H?usp=sharing) and our Text2NKG trained n-ary RE models. 
+When processing end-to-end n-ary relational knowledge graph completion, we use PL-Marker trained NER models on [Google Drive](https://drive.google.com/drive/folders/1k_Nt_DeKRKIRd2sM766j538b1JhYm4-H?usp=sharing) and our Text2NKG trained n-ary RE models.  
+-->
+### Download PLMs
 
-## Training Script
 Download Pre-trained Language Models from [Hugging Face](https://huggingface.co/): 
 ```
 mkdir -p bert_models/bert-base-uncased
@@ -82,6 +96,8 @@ wget -P bert_models/bert-base-uncased https://huggingface.co/bert-base-uncased/r
 wget -P bert_models/bert-base-uncased https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt
 wget -P bert_models/bert-base-uncased https://huggingface.co/bert-base-uncased/resolve/main/config.json
 ```
+
+## Training
 
 Train Text2NKG n-ary RE Models:
 ```
