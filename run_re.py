@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="0"
+os.environ['CUDA_VISIBLE_DEVICES']="3"
 import random
 from collections import defaultdict
 import re
@@ -561,17 +561,12 @@ class ACEDataset(Dataset):
 
         return stacked_fields
 
- 
-
-
 def set_seed(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
-
-
 
 def _rotate_checkpoints(args, checkpoint_prefix, use_mtime=False):
     if not args.save_total_limit:
@@ -919,6 +914,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     cor = 0 
     q_cor = 0
     tot_pred = 0
+    tot_pred_r = 0
     cor_with_ner = 0
     q_cor_with_ner = 0
     global_predicted_ners = eval_dataset.global_predicted_ners
@@ -964,7 +960,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
 
                 pred_label = np.argmax(v1)
                 q_pred_label = np.argmax(q)
-                if pred_label>0:
+                if pred_label>0 and q_pred_label>0:
                     # if pred_label >= num_label:
                     #     pred_label = pred_label - num_label + len(sym_labels)
                     #     m1, m2 = m2, m1
@@ -1000,14 +996,12 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                         overlap = True
                         break
 
-                pred_label = label_list[item[3]]
-
-
                 if not overlap:
                     no_overlap.append(item)
 
             pos2ner = {}
             q_pos2ner = {}
+            relation_visited=[]
 
             for item in no_overlap:
                 m1 = item[1]
@@ -1016,6 +1010,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 pred_label = label_list[item[3]]
                 q_pred_label = q_label_list[item[-2]]
                 tot_pred += 1
+                tot_pred_r += 1
                 ## rel predict
                 # if pred_label in sym_labels:
                 #     tot_pred += 1 # duplicate
@@ -1025,15 +1020,25 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 #     if (example_index, m1, m2, pred_label) in golden_labels:
                 #         cor += 1        
                 ## qul predict
+                is_visited_r = True
+                if (example_index, m1, m2, pred_label) not in relation_visited:
+                    relation_visited.append((example_index, m1, m2, pred_label))
+                    is_visited_r = False
+
+                if not is_visited_r:
+                    if pred_label in sym_labels:
+                        tot_pred_r += 1 # duplicate
+                        if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
+                            cor += 2
+                    else:
+                        if (example_index, m1, m2, pred_label) in golden_labels:
+                            cor += 1   
+
                 if pred_label in sym_labels:
                     tot_pred += 1 # duplicate
-                    if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
-                        cor += 2
                     if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels or (example_index, m2, m1, pred_label, m3, q_pred_label) in q_golden_labels:
                         q_cor += 2
                 else:
-                    if (example_index, m1, m2, pred_label) in golden_labels:
-                        cor += 1   
                     if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels:
                         q_cor += 1   
 
@@ -1045,16 +1050,22 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                     q_pos2ner[m3] = item[-1]
 
                 output_preds.append((m1, m2, pred_label, m3, q_pred_label))
+
+
+                if not is_visited_r:
+                    if pred_label in sym_labels:
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner  \
+                                or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label) in golden_labels_withner:
+                            cor_with_ner += 2
+                    else:  
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
+                            cor_with_ner += 1   
+  
                 if pred_label in sym_labels:
-                    if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner  \
-                            or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label) in golden_labels_withner:
-                        cor_with_ner += 2
                     if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner  \
                             or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
                         q_cor_with_ner += 2
-                else:  
-                    if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
-                        cor_with_ner += 1   
+                else:   
                     if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
                         q_cor_with_ner += 1      
 
@@ -1177,7 +1188,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     ner_r = ner_cor / len(ner_golden_labels) 
     ner_f1 = 2 * (ner_p * ner_r) / (ner_p + ner_r) if ner_cor > 0 else 0.0
 
-    p = cor / tot_pred if tot_pred > 0 else 0 
+    p = cor / tot_pred_r if tot_pred_r > 0 else 0 
     r = cor / tot_recall 
     f1 = 2 * (p * r) / (p + r) if cor > 0 else 0.0
     assert(tot_recall==len(golden_labels))
@@ -1187,7 +1198,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     q_f1 = 2 * (q_p * q_r) / (q_p + q_r) if q_cor > 0 else 0.0
     assert(q_tot_recall==len(q_golden_labels))
 
-    p_with_ner = cor_with_ner / tot_pred if tot_pred > 0 else 0 
+    p_with_ner = cor_with_ner / tot_pred_r if tot_pred_r > 0 else 0 
     r_with_ner = cor_with_ner / tot_recall
     assert(tot_recall==len(golden_labels_withner))
     f1_with_ner = 2 * (p_with_ner * r_with_ner) / (p_with_ner + r_with_ner) if cor_with_ner > 0 else 0.0
@@ -1210,8 +1221,6 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     logger.info("Result: %s", json.dumps(results_r))
 
     return results
-
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -1302,7 +1311,7 @@ def main():
     parser.add_argument("--n-ary_schema",  default="hyper-relational", type=str) # "triple-based", "hypergraph", "role", "hyper-relational"
     
     parser.add_argument('--max_pair_length', type=int, default=32,  help="")
-    parser.add_argument("--alpha", default=0.000001, type=float)#1.0
+    parser.add_argument("--alpha", default=0.001, type=float)#1.0
     parser.add_argument('--save_results', action='store_true')
     parser.add_argument('--no_test', action='store_true')
     parser.add_argument('--eval_logsoftmax', action='store_true',default=True)
@@ -1523,7 +1532,6 @@ def main():
 
         output_eval_file = os.path.join(args.output_dir, "results.json")
         json.dump(results, open(output_eval_file, "w"))
-
 
 if __name__ == "__main__":
     main()
