@@ -278,8 +278,8 @@ class ACEDataset(Dataset):
                 #                 if q_w not in q_pos2label:
                 #                     q_pos2label[q_w] = (label_map[x[4]] + len(label_map) - len(self.sym_labels), q_label_map[q[2]])
 
-                if not self.evaluate:
-                    entities.append((10000, 10000, 'NIL')) # only for NER
+                # if not self.evaluate:
+                #     entities.append((10000, 10000, 'NIL')) # only for NER
 
                 for sub in entities:    
                     cur_ins = []
@@ -436,6 +436,13 @@ class ACEDataset(Dataset):
         position_ids = list(range(self.max_seq_length)) + [0] * self.max_entity_length # (320)
         num_pair = self.max_pair_length
 
+        sub_index = -1
+        for x_idx, obj in enumerate(entry['examples']):
+            q_m2 = obj[3]
+            if sub_position[0]+1 == q_m2[0] and sub_position[1]-1 == q_m2[1]:
+                sub_index = x_idx % int(np.sqrt(len(entry['examples'])))
+                break
+
         for x_idx, obj in enumerate(entry['examples']):
             m2 = obj[0]
             label = obj[1]
@@ -482,10 +489,23 @@ class ACEDataset(Dataset):
             temp_q_mention_pos.append((q_m2[0], q_m2[1]))
             temp_q_mention_2.append(obj[5])
 
-            temp_labels.append(label)
+
+            if x_idx % np.sqrt(len(entry['examples'])) == int(x_idx / np.sqrt(len(entry['examples']))) \
+            or x_idx % np.sqrt(len(entry['examples'])) == sub_index \
+            or int(x_idx / np.sqrt(len(entry['examples']))) == sub_index \
+            or sub_index==-1:
+                temp_labels.append(-1)
+            else:
+                temp_labels.append(label)
             temp_ner_labels.append(m2[2])
 
-            temp_q_labels.append(q_label)
+            if x_idx % np.sqrt(len(entry['examples'])) == int(x_idx / np.sqrt(len(entry['examples']))) \
+            or x_idx % np.sqrt(len(entry['examples'])) == sub_index \
+            or int(x_idx / np.sqrt(len(entry['examples']))) == sub_index \
+            or sub_index==-1:
+                temp_q_labels.append(-1)
+            else:
+                temp_q_labels.append(q_label)
             temp_q_ner_labels.append(q_m2[2])
             
             if (x_idx+1) % np.sqrt(len(entry['examples'])) == 0:
@@ -1311,7 +1331,7 @@ def main():
     parser.add_argument("--n-ary_schema",  default="hyper-relational", type=str) # "triple-based", "hypergraph", "role", "hyper-relational"
     
     parser.add_argument('--max_pair_length', type=int, default=32,  help="")
-    parser.add_argument("--alpha", default=0.001, type=float)#1.0
+    parser.add_argument("--alpha", default=1.0, type=float)#1.0
     parser.add_argument('--save_results', action='store_true')
     parser.add_argument('--no_test', action='store_true')
     parser.add_argument('--eval_logsoftmax', action='store_true',default=True)
