@@ -38,7 +38,7 @@ pip3 install -r requirement.txt
 pip3 install --editable ./transformers
 ```
 
-### 3. Download and preprocess the datasets
+### Download and preprocess the datasets
 Our experiments are based on two datasets: HyperRED and ACE05. Please find the links and pre-processing below:
 * HyperRED : 
 ```
