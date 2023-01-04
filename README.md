@@ -27,8 +27,8 @@ pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f htt
 
 Install dependencies, The code is based on huggaface's [transformers](https://github.com/huggingface/transformers):
 ```
-pip3 install -r requirement.txt
-pip3 install --editable ./transformers
+pip install -r requirement.txt
+pip install --editable ./transformers
 ```
 Then, we should install [apex](https://github.com/NVIDIA/apex). For SSH environment:
 ```
@@ -39,14 +39,14 @@ cd ..
 ```
 
 ### Download and preprocess the datasets
-Our experiments are based on two datasets: HyperRED and ACE05. Please find the links and pre-processing below:
+Our experiments are based on two datasets: HyperRED and HyperACE05. Please find the links and pre-processing below:
 * HyperRED : 
 ```
 python hyperred_data_process.py
 ```
-* ACE05: 
+* HyperACE05: 
 ```
-python ace05_data_process.py
+python hyperace05_data_process.py
 ```
 
 ### Input data format
