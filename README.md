@@ -17,25 +17,25 @@ Please find more details of this work in our paper. -->
 
 ### Default implementation environment
 
-* *Linux(ssh) + Python3.7.13 + Pytorch1.8.1 + Cuda11.1*
+* *Linux(SSH) + Python3.7.13 + Pytorch1.8.1 + Cuda11.1*
 
 ```
 pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
-Then, we should install [apex](https://github.com/NVIDIA/apex). Note that the apex branch needs to conform to the environment. For example:
-```
-git clone git@github.com:NVIDIA/apex.git
-cd apex
-python setup.py install
-cd ..
-```
 ### Install Dependencies
 
 Install dependencies, The code is based on huggaface's [transformers](https://github.com/huggingface/transformers):
 ```
 pip3 install -r requirement.txt
 pip3 install --editable ./transformers
+```
+Then, we should install [apex](https://github.com/NVIDIA/apex). For SSH environment:
+```
+git clone git@github.com:NVIDIA/apex.git
+cd apex
+python setup.py install
+cd ..
 ```
 
 ### Download and preprocess the datasets
