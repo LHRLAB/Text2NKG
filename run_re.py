@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="2"
+os.environ['CUDA_VISIBLE_DEVICES']="0"
 import random
 from collections import defaultdict
 import re
@@ -259,7 +259,7 @@ class ACEDataset(Dataset):
                         
                         q_pos2label[(x[0],x[1],q[0],q[1],x[2],x[3])] = (q_label_map[q[2]],label_map[x[4]])
                         self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (q[0],q[1]), q[2], (x[2],x[3]), x[4]))
-                        self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), q[2], (q[0],q[1], std_entity_labels[(q[0], q[1])]), x[4]))
+                        self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0],x[1])]), (q[0],q[1], std_entity_labels[(q[0],q[1])]), q[2], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4]))
                         
                         q_pos2label[(x[2],x[3],q[0],q[1],x[0],x[1])] = (q_label_map[q[2]],label_map[x[4]+'-1'])
                         self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (q[0],q[1]), q[2], (x[0],x[1]), x[4]+'-1'))
@@ -965,7 +965,12 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 
                 if k1 in visited:
                     continue
-                visited.add(k1)
+                visited.add((k1[0],k1[1],k1[2]))
+                visited.add((k1[0],k1[2],k1[1]))
+                visited.add((k1[1],k1[0],k1[2]))
+                visited.add((k1[1],k1[2],k1[0]))
+                visited.add((k1[2],k1[0],k1[1]))
+                visited.add((k1[2],k1[1],k1[0]))
 
                 # if v2_ner_label=='NIL' or q_ner_label=='NIL':
                 #     continue
@@ -1035,6 +1040,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
             pos2ner = {}
             q_pos2ner = {}
             relation_visited=[]
+            rq_visited=[]
 
             for item in no_overlap:
                 m1 = item[1]
@@ -1042,8 +1048,6 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 m3 = item[-3]
                 pred_label = label_list[item[3]]
                 q_pred_label = q_label_list[item[-2]]
-                tot_pred += 1
-                tot_pred_r += 1
                 ## rel predict
                 # if pred_label in sym_labels:
                 #     tot_pred += 1 # duplicate
@@ -1055,26 +1059,16 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 ## qul predict
                 is_visited_r = True
                 if (example_index, m1, m2, pred_label) not in relation_visited:
+                    tot_pred_r += 1
                     relation_visited.append((example_index, m1, m2, pred_label))
                     is_visited_r = False
-
-                if not is_visited_r:
-                    if pred_label in sym_labels:
-                        tot_pred_r += 1 # duplicate
-                        if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
-                            cor += 2
-                    else:
-                        if (example_index, m1, m2, pred_label) in golden_labels:
-                            cor += 1   
-
-                if pred_label in sym_labels:
-                    tot_pred += 1 # duplicate
-                    if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels or (example_index, m2, m1, pred_label, m3, q_pred_label) in q_golden_labels:
-                        q_cor += 2
-                else:
-                    if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels:
-                        q_cor += 1   
-
+                    
+                is_visited_rq = True
+                if (example_index, m1, m2, pred_label, m3, q_pred_label) not in rq_visited:
+                    tot_pred += 1
+                    rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label))
+                    is_visited_rq = False
+                    
                 if m1 not in pos2ner:
                     pos2ner[m1] = item[4]
                 if m2 not in pos2ner:
@@ -1084,21 +1078,14 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
 
                 output_preds.append((m1, m2, pred_label, m3, q_pred_label))
 
-
                 if not is_visited_r:
-                    if pred_label in sym_labels:
-                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner  \
-                                or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label) in golden_labels_withner:
-                            cor_with_ner += 2
-                    else:  
-                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
-                            cor_with_ner += 1   
-  
-                if pred_label in sym_labels:
-                    if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner  \
-                            or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
-                        q_cor_with_ner += 2
-                else:   
+                    if (example_index, m1, m2, pred_label) in golden_labels:
+                        cor += 1      
+                    if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
+                        cor_with_ner += 1        
+                if not is_visited_rq:
+                    if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels:
+                        q_cor += 1   
                     if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
                         q_cor_with_ner += 1      
 
@@ -1224,21 +1211,21 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     p = cor / tot_pred_r if tot_pred_r > 0 else 0 
     r = cor / tot_recall 
     f1 = 2 * (p * r) / (p + r) if cor > 0 else 0.0
-    assert(tot_recall==len(golden_labels))
+    assert(tot_recall==len(golden_labels)/2)
 
     q_p = q_cor / tot_pred if tot_pred > 0 else 0 
     q_r = q_cor / q_tot_recall 
     q_f1 = 2 * (q_p * q_r) / (q_p + q_r) if q_cor > 0 else 0.0
-    assert(q_tot_recall==len(q_golden_labels))
+    assert(q_tot_recall==len(q_golden_labels)/6)
 
     p_with_ner = cor_with_ner / tot_pred_r if tot_pred_r > 0 else 0 
     r_with_ner = cor_with_ner / tot_recall
-    assert(tot_recall==len(golden_labels_withner))
+    assert(tot_recall==len(golden_labels_withner)/2)
     f1_with_ner = 2 * (p_with_ner * r_with_ner) / (p_with_ner + r_with_ner) if cor_with_ner > 0 else 0.0
 
     q_p_with_ner = q_cor_with_ner / tot_pred if tot_pred > 0 else 0 
     q_r_with_ner = q_cor_with_ner / q_tot_recall
-    assert(q_tot_recall==len(q_golden_labels_withner))
+    assert(q_tot_recall==len(q_golden_labels_withner)/6)
     q_f1_with_ner = 2 * (q_p_with_ner * q_r_with_ner) / (q_p_with_ner + q_r_with_ner) if q_cor_with_ner > 0 else 0.0
 
     results = {'f1':  f1,  'f1_with_ner': f1_with_ner, 'q_f1':  q_f1, 'q_f1_with_ner': q_f1_with_ner,'ner_f1': ner_f1}
@@ -1252,6 +1239,10 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     results_r = {'r':  r,  'r_with_ner': r_with_ner, 'q_r':  q_r, 'q_r_with_ner': q_r_with_ner,'ner_r': ner_r}
 
     logger.info("Result: %s", json.dumps(results_r))
+    
+    results_num = {'correct_r':  cor, 'num_r_ans':  tot_recall,  'num_r_pred': tot_pred_r, 'correct_q':  q_cor, 'num_q_ans':  q_tot_recall, 'num_q_pred': tot_pred}
+
+    logger.info("Result: %s", json.dumps(results_num))
 
     return results
 
@@ -1264,9 +1255,9 @@ def main():
                         help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # datasets/hyperred
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
-    parser.add_argument("--model_name_or_path", default="bert_models2/bert-base-uncased", type=str, 
+    parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
-    parser.add_argument("--output_dir", default="hyperredre3_models/hyperredre-bert-42", type=str, 
+    parser.add_argument("--output_dir", default="hyperredre0_models/hyperredre-bert-42", type=str, 
                         help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre-bert-42"
 
     ## Other parameters
@@ -1344,7 +1335,8 @@ def main():
     parser.add_argument("--n-ary_schema",  default="hyper-relational", type=str) # "triple-based", "hypergraph", "role", "hyper-relational"
     
     parser.add_argument('--max_pair_length', type=int, default=32,  help="")
-    parser.add_argument("--alpha", default=0.5, type=float)#1.0
+    parser.add_argument("--alpha", default=0.02, type=float)#1.0
+    parser.add_argument("--q_alpha", default=0.02, type=float)#1.0      
     parser.add_argument('--save_results', action='store_true')
     parser.add_argument('--no_test', action='store_true')
     parser.add_argument('--eval_logsoftmax', action='store_true',default=True)
@@ -1435,6 +1427,7 @@ def main():
 
     config.max_seq_length = args.max_seq_length
     config.alpha = args.alpha
+    config.q_alpha = args.q_alpha
     config.num_ner_labels = num_ner_labels
     config.num_q_labels = num_q_labels
 

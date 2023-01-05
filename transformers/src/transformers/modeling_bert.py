@@ -2243,7 +2243,7 @@ class BertForACEBothOneDropoutSub(BertPreTrainedModel):
 
         self.alpha = torch.tensor([config.alpha] + [1.0] * (self.num_labels-1), dtype=torch.float32)
         self.ner_alpha = torch.tensor([config.alpha] + [1.0] * (self.num_ner_labels-1), dtype=torch.float32)
-        self.q_alpha = torch.tensor([config.alpha] + [1.0] * (self.num_q_labels-1), dtype=torch.float32)
+        self.q_alpha = torch.tensor([config.q_alpha] + [1.0] * (self.num_q_labels-1), dtype=torch.float32)
 
         self.init_weights()
 
@@ -2310,10 +2310,13 @@ class BertForACEBothOneDropoutSub(BertPreTrainedModel):
         q_re_prediction_scores = q_m1_scores.unsqueeze(1).unsqueeze(2) + q_m2_scores + q_m3_scores      
 
         outputs = (re_prediction_scores, ner_prediction_scores, q_re_prediction_scores, q_ner_prediction_scores) #+ outputs[2:]  # Add hidden states and attention if they are here
+        
+        
+
 
         if labels is not None:
             # labels = torch.stack(([labels]*ent_len),dim=1)
-            # labels = torch.where(q_labels==-1,-1,labels)
+            # labels = torch.where(q_labels==-1,-1,labels)           
             loss_fct_re = CrossEntropyLoss(ignore_index=-1,  weight=self.alpha.to(re_prediction_scores))
             loss_fct_ner = CrossEntropyLoss(ignore_index=-1,  weight=self.ner_alpha.to(ner_prediction_scores))
             loss_fct_q_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q_re_prediction_scores))
