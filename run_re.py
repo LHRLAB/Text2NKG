@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="0"
+os.environ['CUDA_VISIBLE_DEVICES']="1"
 import random
 from collections import defaultdict
 import re
@@ -161,7 +161,7 @@ class ACEDataset(Dataset):
         maxL = 0
         for l_idx, line in tqdm(enumerate(f)):
             
-            # if l_idx > 1000:
+            # if l_idx > 100:
             #     break
             
             data = json.loads(line)
@@ -460,26 +460,21 @@ class ACEDataset(Dataset):
             m2 = obj[0]
             label = obj[1]
             
-            # if x_idx % np.sqrt(len(entry['examples'])) == 0:
-            #     mention_pos.append((m2[0], m2[1]))
-            #     mention_2.append(obj[2])
+            if x_idx % np.sqrt(len(entry['examples'])) == 0:
 
-            #     w1 = int(x_idx / np.sqrt(len(entry['examples'])))
-            #     w2 = w1 + num_pair
+                w1 = int(x_idx / np.sqrt(len(entry['examples'])))
+                w2 = w1 + num_pair
 
-            #     w1 += self.max_seq_length
-            #     w2 += self.max_seq_length
+                w1 += self.max_seq_length
+                w2 += self.max_seq_length
                 
-            #     position_ids[w1] = m2[0]
-            #     position_ids[w2] = m2[1]
+                position_ids[w1] = m2[0]
+                position_ids[w2] = m2[1]
 
-            #     for xx in [w1, w2]:
-            #         for yy in [w1, w2]:
-            #             attention_mask[xx, yy] = 1
-            #         attention_mask[xx, :L] = 1
-
-            #     labels.append(label)
-            #     ner_labels.append(m2[2])
+                for xx in [w1, w2]:
+                    for yy in [w1, w2]:
+                        attention_mask[xx, yy] = 1
+                    attention_mask[xx, :L] = 1
             
             # qualifiers
             q_m2 = obj[3]
@@ -866,8 +861,8 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     scores = defaultdict(dict)
     # ner_pred = not args.model_type.endswith('noner')
     example_subs = set([])
-    num_label = len(label_list)
-    num_q_label = len(q_label_list)
+    num_label = int((len(label_list)+len(sym_labels))/2)
+    num_q_label = int((len(q_label_list)+len(sym_labels))/2)
 
     logger.info("***** Running evaluation {} *****".format(prefix))
     logger.info("  Batch size = %d", args.eval_batch_size)
@@ -961,50 +956,115 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
         for example_index, pair_dict in sorted(scores.items(), key=lambda x:x[0]):  
             visited  = set([])
             sentence_results = []
-            for k1, (v1, v2_ner_label, q, q_ner_label) in pair_dict.items():
+            for k123, (v123, v1_ner_label, q123, _) in pair_dict.items():
                 
-                if k1 in visited:
+                if k123 in visited:
                     continue
-                visited.add((k1[0],k1[1],k1[2]))
-                visited.add((k1[0],k1[2],k1[1]))
-                visited.add((k1[1],k1[0],k1[2]))
-                visited.add((k1[1],k1[2],k1[0]))
-                visited.add((k1[2],k1[0],k1[1]))
-                visited.add((k1[2],k1[1],k1[0]))
+                visited.add(k123)
+                # visited.add((k132))
+                # visited.add((k231)
+                # visited.add((k312)
+                # visited.add((k321)
 
                 # if v2_ner_label=='NIL' or q_ner_label=='NIL':
                 #     continue
-                v1 = list(v1)
-                q = list(q)
-                m1 = k1[0]
-                m2 = k1[1]
-                m3 = k1[2]
+                v = list(v123)
+                q = list(q123)
+                m1 = k123[0]
+                m2 = k123[1]
+                m3 = k123[2]
                 if m1 == m2 or m2 == m3 or m3 == m1:
                     continue
-                k2 = (m2, m1, m3)
-                v2s = pair_dict.get(k2, None)
-                if v2s is not None:
-                    # visited.add(k2)
-                    v2, v1_ner_label, _,_ = v2s
-                    # v2 = v2[ : len(sym_labels)] + v2[num_label:] + v2[len(sym_labels) : num_label]
-
-                    # for j in range(len(v2)):
-                    #     v1[j] += v2[j]
+                k213 = (m2, m1, m3)
+                v213s = pair_dict.get(k213, None)
+                if v213s is not None:
+                    visited.add(k213)
+                    v213, v2_ner_label, q213, _= v213s
+                    v213 = v213[ : len(sym_labels)] + v213[num_label:] + v213[len(sym_labels) : num_label]
+                    for j in range(len(v213)):
+                        v[j] += v213[j]
+                    for j in range(len(q213)):
+                        q[j] += q213[j]
+                else:
+                    assert ( False )
+                    
+                k132 = (m1, m3, m2)
+                v132s = pair_dict.get(k132, None)
+                if v132s is not None:
+                    visited.add(k132)
+                    v132, _, q132, _= v132s
+                    temp= v132
+                    v132 = q132
+                    q132 = temp
+                    for j in range(len(v132)):
+                        v[j] += v132[j]
+                    for j in range(len(q132)):
+                        q[j] += q132[j]
+                else:
+                    assert ( False )
+                    
+                k231 = (m2, m3, m1)
+                v231s = pair_dict.get(k231, None)
+                if v231s is not None:
+                    visited.add(k231)
+                    v231, _, q231, _= v231s
+                    temp= v231
+                    v231 = q231
+                    q231 = temp[ : len(sym_labels)] + temp[num_label:] + temp[len(sym_labels) : num_label]
+                    for j in range(len(v231)):
+                        v[j] += v231[j]
+                    for j in range(len(q231)):
+                        q[j] += q231[j]
+                else:
+                    assert ( False )
+                    
+                k312 = (m3, m1, m2)
+                v312s = pair_dict.get(k312, None)
+                if v312s is not None:
+                    visited.add(k312)
+                    v312, v3_ner_label, q312, _= v312s
+                    temp= v312
+                    v312 = q312[ : len(sym_labels)] + q312[num_q_label:] + q312[len(sym_labels) : num_q_label]
+                    q312 = temp
+                    for j in range(len(v312)):
+                        v[j] += v312[j]
+                    for j in range(len(q312)):
+                        q[j] += q312[j]
+                else:
+                    assert ( False )
+                    
+                k321 = (m3, m2, m1)
+                v321s = pair_dict.get(k321, None)
+                if v321s is not None:
+                    visited.add(k321)
+                    v321, _, q321, _= v321s
+                    q321 = q321[ : len(sym_labels)] + q321[num_q_label:] + q321[len(sym_labels) : num_q_label]
+                    for j in range(len(v321)):
+                        v[j] += v321[j]
+                    for j in range(len(q321)):
+                        q[j] += q321[j]
                 else:
                     assert ( False )
 
                 # if v1_ner_label=='NIL':
                 #     continue
 
-                pred_label = np.argmax(v1)
+                pred_label = np.argmax(v)
                 q_pred_label = np.argmax(q)
                 if pred_label>0 and q_pred_label>0:
-                    # if pred_label >= num_label:
-                    #     pred_label = pred_label - num_label + len(sym_labels)
-                    #     m1, m2 = m2, m1
-                    #     v1_ner_label, v2_ner_label = v2_ner_label, v1_ner_label
+                    if pred_label >= num_label:
+                        pred_label = pred_label - num_label + len(sym_labels)
+                        m1, m2 , m3= m2, m1, m3
+                        v1_ner_label, v2_ner_label = v2_ner_label, v1_ner_label                    
 
-                    pred_score = v1[pred_label]
+                    if q_pred_label >= num_q_label:
+                        m1, m2, m3=m3, m1, m2
+                        temp = pred_label
+                        pred_label = q_pred_label - num_q_label + len(sym_labels)
+                        q_pred_label = temp
+                        v1_ner_label, v2_ner_label, v3_ner_label = v3_ner_label, v1_ner_label, v2_ner_label 
+
+                    pred_score = v[pred_label]
                     q_pred_score = q[q_pred_label]
 
                     sentence_results.append( (pred_score, m1, m2, pred_label, v1_ner_label, v2_ner_label, q_pred_score, m3, q_pred_label, q_ner_label) )
@@ -1257,7 +1317,7 @@ def main():
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
     parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
-    parser.add_argument("--output_dir", default="hyperredre0_models/hyperredre-bert-42", type=str, 
+    parser.add_argument("--output_dir", default="hyperredre1_models/hyperredre-bert-42", type=str, 
                         help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre-bert-42"
 
     ## Other parameters
