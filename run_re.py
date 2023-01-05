@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="1"
+os.environ['CUDA_VISIBLE_DEVICES']="0"
 import random
 from collections import defaultdict
 import re
@@ -1317,7 +1317,7 @@ def main():
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
     parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
-    parser.add_argument("--output_dir", default="hyperredre1_models/hyperredre-bert-42", type=str, 
+    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre-bert-42", type=str, 
                         help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre-bert-42"
 
     ## Other parameters
