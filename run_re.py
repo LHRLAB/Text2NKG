@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="0"
+os.environ['CUDA_VISIBLE_DEVICES']="2"
 import random
 from collections import defaultdict
 import re
@@ -120,8 +120,11 @@ class ACEDataset(Dataset):
 
         self.ner_label_list = ['NIL'] + task_ner_labels[self.args.dataset]
         self.sym_labels = ['NIL']
-        self.label_list = ['NIL'] + task_rel_labels[self.args.dataset]
-        self.q_label_list = ['NIL'] + task_q_labels[self.args.dataset]
+        self.label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
+        +[x+'-1' for x in list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
+        self.q_label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
+        +[x+'-1' for x in list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
+        self.d= len(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))
 
         self.global_predicted_ners = {}
         self.initialize()
@@ -179,15 +182,9 @@ class ACEDataset(Dataset):
             # count tot_recall by filtering PER-SOC , which is number of triples.
             for sentence_relation in relations:
                 for x in sentence_relation:
-                    if x[4] in self.sym_labels[1:]:
-                        self.tot_recall += 2 #if ['NIL']
-                    else: 
-                        self.tot_recall +=  1   #else
+                    self.tot_recall +=  1
                     for q in x[5]:
-                        if x[4] in self.sym_labels[1:]:
-                            self.q_tot_recall += 2 #if ['NIL']
-                        else:
-                            self.q_tot_recall +=  1
+                        self.q_tot_recall +=  1
 
             sentence_boundaries = [0]
             words = []
@@ -248,18 +245,34 @@ class ACEDataset(Dataset):
                     pos2label[(x[0],x[1],x[2],x[3])] = label_map[x[4]]
                     self.golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4]))
                     self.golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4]))
+                    pos2label[(x[2],x[3],x[1],x[0])] = label_map[x[4]+'-1']
+                    self.golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4]+'-1'))
+                    self.golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1'))
                     for q in x[5]:
                         q_pos2label[(x[0],x[1],x[2],x[3],q[0],q[1])] = (label_map[x[4]],q_label_map[q[2]])
                         self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4], (q[0],q[1]), q[2]))
                         self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2]))
                         
-                    if x[4] in self.sym_labels[1:]:
-                        self.golden_labels.add(((l_idx, n),  (x[2],x[3]), (x[0],x[1]), x[4]))
-                        self.golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]))
-                        for q in x[5]:
-                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4], (q[0],q[1]), q[2]))
-                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0],x[1])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2]))
-
+                        q_pos2label[(x[2],x[3],x[0],x[1],q[0],q[1])] = (label_map[x[4]+'-1'],q_label_map[q[2]])
+                        self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4]+'-1', (q[0],q[1]), q[2]))
+                        self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1', (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2]))
+                        
+                        q_pos2label[(x[0],x[1],q[0],q[1],x[2],x[3])] = (q_label_map[q[2]],label_map[x[4]])
+                        self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (q[0],q[1]), q[2], (x[2],x[3]), x[4]))
+                        self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), q[2], (q[0],q[1], std_entity_labels[(q[0], q[1])]), x[4]))
+                        
+                        q_pos2label[(x[2],x[3],q[0],q[1],x[0],x[1])] = (q_label_map[q[2]],label_map[x[4]+'-1'])
+                        self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (q[0],q[1]), q[2], (x[0],x[1]), x[4]+'-1'))
+                        self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1'))
+                        
+                        q_pos2label[(q[0],q[1],x[0],x[1],x[2],x[3])] = (q_label_map[q[2]+'-1'],label_map[x[4]])
+                        self.q_golden_labels.add(((l_idx, n),  (q[0],q[1]), (x[0],x[1]),q[2]+'-1', (x[2],x[3]), x[4]))
+                        self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), q[2]+'-1', (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4]))
+                        
+                        q_pos2label[(q[0],q[1],x[2],x[3],x[0],x[1])] = (label_map[x[4]],q_label_map[q[2]+'-1'])
+                        self.q_golden_labels.add(((l_idx, n), (q[0],q[1]), (x[2],x[3]), x[4], (x[0],x[1]), q[2]+'-1'))
+                        self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (x[0],x[1], std_entity_labels[(x[0], x[1])]),q[2]+'-1'))
+                        
                 entities = list(sentence_ners)
 
                 # for x in sentence_relations:
@@ -356,7 +369,7 @@ class ACEDataset(Dataset):
                                 q_right += 1
                                 if q[1] > sub[1]:
                                     q_right += 1
-        
+                            label = q_pos2label.get((sub[0], sub[1], obj[0], obj[1], q[0], q[1]), (0,0))[0]
                             q_label = q_pos2label.get((sub[0], sub[1], obj[0], obj[1], q[0], q[1]), (0,0))[1]
 
                             if q_right >= self.max_seq_length-1:
@@ -1251,9 +1264,9 @@ def main():
                         help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # datasets/hyperred
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
-    parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
+    parser.add_argument("--model_name_or_path", default="bert_models2/bert-base-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
-    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre-bert-42", type=str, 
+    parser.add_argument("--output_dir", default="hyperredre3_models/hyperredre-bert-42", type=str, 
                         help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre-bert-42"
 
     ## Other parameters
@@ -1406,9 +1419,9 @@ def main():
     # Set seed
     set_seed(args)
 
-    num_labels = len(task_rel_labels[args.dataset])+1
+    num_labels = len(set(task_rel_labels[args.dataset]+task_q_labels[args.dataset]))*2+1
     num_ner_labels = len(task_ner_labels[args.dataset])+1
-    num_q_labels = len(task_q_labels[args.dataset])+1
+    num_q_labels = len(set(task_rel_labels[args.dataset]+task_q_labels[args.dataset]))*2+1
 
     # Load pretrained model and tokenizer
     if args.local_rank not in [-1, 0]:
