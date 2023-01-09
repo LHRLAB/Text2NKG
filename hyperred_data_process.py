@@ -407,7 +407,9 @@ def process(
                 for relation in sent['relations']:
                     processed_q = []
                     for q in relation['qualifiers']:
+                        q['label'] = '[q]' + q['label']
                         processed_q.append([q['span'][0], q['span'][1]-1, q['label']])
+                    relation['label'] = '[r]' + relation['label']
                     processed_relations.append([relation['head'][0], relation['head'][1]-1, relation['tail'][0], relation['tail'][1]-1, relation['label'], processed_q])
                 processed['relations'] = [processed_relations]
                 processed['clusters'] = []
@@ -420,6 +422,12 @@ def make_label_file(pattern_in: str, path_out: str):
     for path in sorted(Path().glob(pattern_in)):
         with open(path) as f:
             sents.extend([Sentence(**json.loads(line)) for line in tqdm(f)])
+
+    for s in sents:
+        for r in s.relations:
+            r.label = '[r]' + r.label
+            for q in r.qualifiers:
+                q.label = '[q]' + q.label
 
     relations = sorted(set(r.label for s in sents for r in s.relations))
     qualifiers = sorted(
