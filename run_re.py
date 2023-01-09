@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="0"
+os.environ['CUDA_VISIBLE_DEVICES']="1"
 import random
 from collections import defaultdict
 import re
@@ -71,17 +71,9 @@ MODEL_CLASSES = {
     'albertsub': (AlbertConfig, AlbertForACEBothOneDropoutSub, AlbertTokenizer),
 }
 
-task_ner_labels = {
-    'ace04': ['FAC', 'WEA', 'LOC', 'VEH', 'GPE', 'ORG', 'PER'],
-    'ace05': ['FAC', 'WEA', 'LOC', 'VEH', 'GPE', 'ORG', 'PER'],
-    'scierc': ['Method', 'OtherScientificTerm', 'Task', 'Generic', 'Material', 'Metric'],
-}
+task_ner_labels = {}
 
-task_rel_labels = {
-    'ace04': ['PER-SOC', 'OTHER-AFF', 'ART', 'GPE-AFF', 'EMP-ORG', 'PHYS'],
-    'ace05': ['PER-SOC', 'ART', 'ORG-AFF', 'GEN-AFF', 'PHYS', 'PART-WHOLE'],
-    'scierc': ['PART-OF', 'USED-FOR', 'FEATURE-OF', 'CONJUNCTION', 'EVALUATE-FOR', 'HYPONYM-OF', 'COMPARE'],
-}
+task_rel_labels = {}
 
 task_q_labels = dict()
 
@@ -120,14 +112,56 @@ class ACEDataset(Dataset):
 
         self.ner_label_list = ['NIL'] + task_ner_labels[self.args.dataset]
         self.sym_labels = ['NIL']
-        self.label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
-        +[x+'-1' for x in list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
-        self.q_label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
-        +[x+'-1' for x in list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
-        self.d= len(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))
+        if self.args.nary_schema == "hyperrelation":
+            self.label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
+            +[x+'-1' for x in list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
+            self.q_label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
+            +[x+'-1' for x in list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
+            self.d= len(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))
+        if self.args.nary_schema == "event" or self.args.nary_schema =="hypergraph" or self.args.nary_schema =="role":
+            self.label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]))
+            self.q_label_list = ['NIL'] + list(set(task_q_labels[self.args.dataset]))          
 
         self.global_predicted_ners = {}
         self.initialize()
+        
+    def process_to_hyperrelation(self, data):
+        if self.args.nary_schema == "hyperrelation":
+            return data
+        elif self.args.nary_schema == "event":
+            hr_rels = []
+            for sen_rels in data["relations"]:
+                hr_sen_rels=[]
+                for rel in sen_rels:
+                    if len(rel) >=4:
+                        hr_rel = [rel[1][0],rel[1][1],rel[2][0],rel[2][1],rel[0],rel[3:],rel[1][2],rel[2][2]]
+                        hr_sen_rels.append(hr_rel)
+                hr_rels.append(hr_sen_rels)
+            data["relations"] = hr_rels
+            return data
+        elif self.args.nary_schema == "role":
+            hr_rels = []
+            for sen_rels in data["relations"]:
+                hr_sen_rels=[]
+                for rel in sen_rels:
+                    if len(rel) >=3:
+                        hr_rel = [rel[0][0],rel[0][1],rel[1][0],rel[1][1],rel[1][2],rel[2:],rel[0][2]]
+                        hr_sen_rels.append(hr_rel)
+                hr_rels.append(hr_sen_rels)
+            data["relations"] = hr_rels
+            return data
+        elif self.args.nary_schema == "hypergraph":
+            hr_rels = []
+            for sen_rels in data["relations"]:
+                hr_sen_rels=[]
+                for rel in sen_rels:
+                    if len(rel) >=4:
+                        hr_rel = [rel[1][0],rel[1][1],rel[2][0],rel[2][1],rel[0],rel[3:],rel[0]]
+                        hr_sen_rels.append(hr_rel)
+                hr_rels.append(hr_sen_rels)
+            data["relations"] = hr_rels
+            return data
+                    
  
     def initialize(self):
         tokenizer = self.tokenizer
@@ -161,10 +195,12 @@ class ACEDataset(Dataset):
         maxL = 0
         for l_idx, line in tqdm(enumerate(f)):
             
-            # if l_idx > 100:
-            #     break
+            if l_idx > 100:
+                break
             
             data = json.loads(line)
+            data = self.process_to_hyperrelation(data)
+            
 
             if self.args.output_dir.find('test')!=-1:
                 if len(self.data) > 100:
@@ -184,7 +220,7 @@ class ACEDataset(Dataset):
                 for x in sentence_relation:
                     self.tot_recall +=  1
                     for q in x[5]:
-                        self.q_tot_recall +=  1
+                        self.q_tot_recall +=  1        
 
             sentence_boundaries = [0]
             words = []
@@ -241,58 +277,140 @@ class ACEDataset(Dataset):
                 
                 pos2label = {}
                 q_pos2label = {}
-                for x in sentence_relations:
-                    pos2label[(x[0],x[1],x[2],x[3])] = label_map[x[4]]
-                    self.golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4]))
-                    self.golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4]))
-                    pos2label[(x[2],x[3],x[1],x[0])] = label_map[x[4]+'-1']
-                    self.golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4]+'-1'))
-                    self.golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1'))
-                    for q in x[5]:
-                        q_pos2label[(x[0],x[1],x[2],x[3],q[0],q[1])] = (label_map[x[4]],q_label_map[q[2]])
-                        self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4], (q[0],q[1]), q[2]))
-                        self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2]))
+                
+                if self.args.nary_schema == "hyperrelation":
+                            
+                    for x in sentence_relations:
+                        pos2label[(x[0],x[1],x[2],x[3])] = label_map[x[4]]
+                        self.golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4]))
+                        self.golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4]))
+                        pos2label[(x[2],x[3],x[1],x[0])] = label_map[x[4]+'-1']
+                        self.golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4]+'-1'))
+                        self.golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1'))
+                        for q in x[5]:
+                            q_pos2label[(x[0],x[1],x[2],x[3],q[0],q[1])] = (label_map[x[4]],q_label_map[q[2]])
+                            self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4], (q[0],q[1]), q[2]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2]))
+                            
+                            q_pos2label[(x[2],x[3],x[0],x[1],q[0],q[1])] = (label_map[x[4]+'-1'],q_label_map[q[2]])
+                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4]+'-1', (q[0],q[1]), q[2]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1', (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2]))
+                            
+                            q_pos2label[(x[0],x[1],q[0],q[1],x[2],x[3])] = (q_label_map[q[2]],label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (q[0],q[1]), q[2], (x[2],x[3]), x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0],x[1])]), (q[0],q[1], std_entity_labels[(q[0],q[1])]), q[2], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4]))
+                            
+                            q_pos2label[(x[2],x[3],q[0],q[1],x[0],x[1])] = (q_label_map[q[2]],label_map[x[4]+'-1'])
+                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (q[0],q[1]), q[2], (x[0],x[1]), x[4]+'-1'))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1'))
+                            
+                            q_pos2label[(q[0],q[1],x[0],x[1],x[2],x[3])] = (q_label_map[q[2]+'-1'],label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n),  (q[0],q[1]), (x[0],x[1]),q[2]+'-1', (x[2],x[3]), x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), q[2]+'-1', (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4]))
+                            
+                            q_pos2label[(q[0],q[1],x[2],x[3],x[0],x[1])] = (label_map[x[4]],q_label_map[q[2]+'-1'])
+                            self.q_golden_labels.add(((l_idx, n), (q[0],q[1]), (x[2],x[3]), x[4], (x[0],x[1]), q[2]+'-1'))
+                            self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (x[0],x[1], std_entity_labels[(x[0], x[1])]),q[2]+'-1'))
+
+                elif self.args.nary_schema == "event":
+                    for x in sentence_relations:
+                        pos2label[(x[0],x[1],x[2],x[3])] = label_map[x[4]]
+                        self.golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4]))
+                        self.golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4]))
+                        pos2label[(x[2],x[3],x[1],x[0])] = label_map[x[4]]
+                        self.golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4]))
+                        self.golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]))
+                        for q in x[5]:
+                            q_pos2label[(x[0],x[1],x[2],x[3],q[0],q[1])] = (label_map[x[4]],q_label_map[q[2]],q_label_map[x[6]],q_label_map[x[7]])
+                            self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4], (q[0],q[1]), q[2], x[6], x[7]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2], x[6], x[7]))
+                            
+                            q_pos2label[(x[2],x[3],x[0],x[1],q[0],q[1])] = (label_map[x[4]],q_label_map[q[2]],q_label_map[x[7]],q_label_map[x[6]])
+                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4], (q[0],q[1]), q[2], x[7], x[6] ))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2], x[7], x[6]))
+                            
+                            q_pos2label[(x[0],x[1],q[0],q[1],x[2],x[3])] = (label_map[x[4]],q_label_map[x[7]],q_label_map[x[6]],q_label_map[q[2]])
+                            self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (q[0],q[1]), x[4], (x[2],x[3]), x[7], x[6], q[2]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0],x[1])]), (q[0],q[1], std_entity_labels[(q[0],q[1])]), x[4], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[7], x[6], q[2]))
+                            
+                            q_pos2label[(x[2],x[3],q[0],q[1],x[0],x[1])] = (label_map[x[4]],q_label_map[x[6]],q_label_map[x[7]],q_label_map[q[2]])
+                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (q[0],q[1]), x[4], (x[0],x[1]), x[6], x[7], q[2]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (q[0],q[1], std_entity_labels[(q[0], q[1])]), x[4], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[6], x[7], q[2]))
+                            
+                            q_pos2label[(q[0],q[1],x[0],x[1],x[2],x[3])] = (label_map[x[4]],q_label_map[x[7]],q_label_map[q[2]],q_label_map[x[6]])
+                            self.q_golden_labels.add(((l_idx, n),  (q[0],q[1]), (x[0],x[1]), x[4], (x[2],x[3]), x[7], q[2], x[6]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[7], q[2], x[6]))
+                            
+                            q_pos2label[(q[0],q[1],x[2],x[3],x[0],x[1])] = (label_map[x[4]],q_label_map[x[6]],q_label_map[q[2]],q_label_map[x[7]])
+                            self.q_golden_labels.add(((l_idx, n), (q[0],q[1]), (x[2],x[3]), x[4], (x[0],x[1]), x[6], q[2], x[7]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[6], q[2], x[7]))
                         
-                        q_pos2label[(x[2],x[3],x[0],x[1],q[0],q[1])] = (label_map[x[4]+'-1'],q_label_map[q[2]])
-                        self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4]+'-1', (q[0],q[1]), q[2]))
-                        self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1', (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2]))
-                        
-                        q_pos2label[(x[0],x[1],q[0],q[1],x[2],x[3])] = (q_label_map[q[2]],label_map[x[4]])
-                        self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (q[0],q[1]), q[2], (x[2],x[3]), x[4]))
-                        self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0],x[1])]), (q[0],q[1], std_entity_labels[(q[0],q[1])]), q[2], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4]))
-                        
-                        q_pos2label[(x[2],x[3],q[0],q[1],x[0],x[1])] = (q_label_map[q[2]],label_map[x[4]+'-1'])
-                        self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (q[0],q[1]), q[2], (x[0],x[1]), x[4]+'-1'))
-                        self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]+'-1'))
-                        
-                        q_pos2label[(q[0],q[1],x[0],x[1],x[2],x[3])] = (q_label_map[q[2]+'-1'],label_map[x[4]])
-                        self.q_golden_labels.add(((l_idx, n),  (q[0],q[1]), (x[0],x[1]),q[2]+'-1', (x[2],x[3]), x[4]))
-                        self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), q[2]+'-1', (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4]))
-                        
-                        q_pos2label[(q[0],q[1],x[2],x[3],x[0],x[1])] = (label_map[x[4]],q_label_map[q[2]+'-1'])
-                        self.q_golden_labels.add(((l_idx, n), (q[0],q[1]), (x[2],x[3]), x[4], (x[0],x[1]), q[2]+'-1'))
-                        self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (x[0],x[1], std_entity_labels[(x[0], x[1])]),q[2]+'-1'))
-                        
+                elif self.args.nary_schema == "role":
+                    for x in sentence_relations:
+                        pos2label[(x[0],x[1],x[2],x[3])] = q_label_map[x[4]]
+                        self.golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4]))
+                        self.golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4]))
+                        pos2label[(x[2],x[3],x[1],x[0])] = q_label_map[x[6]]
+                        self.golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[6]))
+                        self.golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[6]))
+                        for q in x[5]:
+                            q_pos2label[(x[0],x[1],x[2],x[3],q[0],q[1])] = (q_label_map[x[4]],q_label_map[q[2]],q_label_map[x[6]])
+                            self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4], (q[0],q[1]), q[2], x[6]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2], x[6]))
+                            
+                            q_pos2label[(x[2],x[3],x[0],x[1],q[0],q[1])] = (q_label_map[x[6]],q_label_map[q[2]],q_label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[6], (q[0],q[1]), q[2], x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[6], (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2], x[4]))
+                            
+                            q_pos2label[(x[0],x[1],q[0],q[1],x[2],x[3])] = (q_label_map[q[2]],q_label_map[x[4]],q_label_map[x[6]])
+                            self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (q[0],q[1]), q[2], (x[2],x[3]), x[4], x[6]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0],x[1])]), (q[0],q[1], std_entity_labels[(q[0],q[1])]), q[2], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4], x[6]))
+                            
+                            q_pos2label[(x[2],x[3],q[0],q[1],x[0],x[1])] = (q_label_map[q[2]],q_label_map[x[6]],q_label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (q[0],q[1]), q[2], (x[0],x[1]), x[6], x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (q[0],q[1], std_entity_labels[(q[0], q[1])]), q[2], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[6], x[4]))
+                            
+                            q_pos2label[(q[0],q[1],x[0],x[1],x[2],x[3])] = (q_label_map[x[6]],q_label_map[x[4]],q_label_map[q[2]])
+                            self.q_golden_labels.add(((l_idx, n),  (q[0],q[1]), (x[0],x[1]), x[6], (x[2],x[3]), x[4], q[2]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[6], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4], q[2]))
+                            
+                            q_pos2label[(q[0],q[1],x[2],x[3],x[0],x[1])] = (q_label_map[x[4]],q_label_map[x[6]],q_label_map[q[2]])
+                            self.q_golden_labels.add(((l_idx, n), (q[0],q[1]), (x[2],x[3]), x[4], (x[0],x[1]), x[6], q[2]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[6], q[2]))      
+                            
+                elif self.args.nary_schema == "hypergraph":
+                    for x in sentence_relations:
+                        pos2label[(x[0],x[1],x[2],x[3])] = label_map[x[4]]
+                        self.golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4]))
+                        self.golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4]))
+                        pos2label[(x[2],x[3],x[1],x[0])] = label_map[x[4]]
+                        self.golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4]))
+                        self.golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]))
+                        for q in x[5]:
+                            q_pos2label[(x[0],x[1],x[2],x[3],q[0],q[1])] = (label_map[x[4]],label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (x[2],x[3]), x[4], (q[0],q[1]),x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0], x[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), x[4]))
+                            
+                            q_pos2label[(x[2],x[3],x[0],x[1],q[0],q[1])] = (label_map[x[4]],label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (x[0],x[1]), x[4], (q[0],q[1]), x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4], (q[0],q[1], std_entity_labels[(q[0], q[1])]), x[4]))
+                            
+                            q_pos2label[(x[0],x[1],q[0],q[1],x[2],x[3])] = (label_map[x[4]],label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n), (x[0],x[1]), (q[0],q[1]), x[4], (x[2],x[3]), x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[0],x[1], std_entity_labels[(x[0],x[1])]), (q[0],q[1], std_entity_labels[(q[0],q[1])]), x[4], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4]))
+                            
+                            q_pos2label[(x[2],x[3],q[0],q[1],x[0],x[1])] = (label_map[x[4]],label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n), (x[2],x[3]), (q[0],q[1]), x[4], (x[0],x[1]), x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (x[2],x[3], std_entity_labels[(x[2], x[3])]), (q[0],q[1], std_entity_labels[(q[0], q[1])]), x[4], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]))
+                            
+                            q_pos2label[(q[0],q[1],x[0],x[1],x[2],x[3])] = (label_map[x[4]],label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n),  (q[0],q[1]), (x[0],x[1]), x[4], (x[2],x[3]), x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4], (x[2],x[3], std_entity_labels[(x[2],x[3])]), x[4]))
+                            
+                            q_pos2label[(q[0],q[1],x[2],x[3],x[0],x[1])] = (label_map[x[4]],label_map[x[4]])
+                            self.q_golden_labels.add(((l_idx, n), (q[0],q[1]), (x[2],x[3]), x[4], (x[0],x[1]), x[4]))
+                            self.q_golden_labels_withner.add(((l_idx, n), (q[0],q[1], std_entity_labels[(q[0], q[1])]), (x[2],x[3], std_entity_labels[(x[2], x[3])]), x[4], (x[0],x[1], std_entity_labels[(x[0], x[1])]), x[4]))              
                 entities = list(sentence_ners)
-
-                # for x in sentence_relations:
-                #     w = (x[2],x[3],x[0],x[1])
-                #     if w not in pos2label:
-                #         if x[4] in self.sym_labels[1:]:
-                #             pos2label[w] = label_map[x[4]]  # bug
-                #             for q in x[5]:
-                #                 q_w = (x[2],x[3],x[0],x[1],q[0],q[1])
-                #                 if q_w not in q_pos2label:
-                #                     q_pos2label[q_w] = (label_map[x[4]], q_label_map[q[2]])
-                #         else:
-                #             pos2label[w] = label_map[x[4]] + len(label_map) - len(self.sym_labels)
-                #             for q in x[5]:
-                #                 q_w = (x[2],x[3],x[0],x[1],q[0],q[1])
-                #                 if q_w not in q_pos2label:
-                #                     q_pos2label[q_w] = (label_map[x[4]] + len(label_map) - len(self.sym_labels), q_label_map[q[2]])
-
-                # if not self.evaluate:
-                #     entities.append((10000, 10000, 'NIL')) # only for NER
 
                 for sub in entities:    
                     cur_ins = []
@@ -369,13 +487,23 @@ class ACEDataset(Dataset):
                                 q_right += 1
                                 if q[1] > sub[1]:
                                     q_right += 1
-                            label = q_pos2label.get((sub[0], sub[1], obj[0], obj[1], q[0], q[1]), (0,0))[0]
-                            q_label = q_pos2label.get((sub[0], sub[1], obj[0], obj[1], q[0], q[1]), (0,0))[1]
+                            
+                            
 
                             if q_right >= self.max_seq_length-1:
                                 continue
-
-                            q_cur_ins.append(((left, right, ner_label_map[obj_label]), label, obj, (q_left, q_right, ner_label_map[qul_label]), q_label, q))                           
+                            if self.args.nary_schema == "hyperrelation":
+                                label = q_pos2label.get((sub[0], sub[1], obj[0], obj[1], q[0], q[1]), (0,0))
+                                q_cur_ins.append(((left, right, ner_label_map[obj_label]), label[0], obj, (q_left, q_right, ner_label_map[qul_label]), label[1], q))        
+                            elif self.args.nary_schema == "event":     
+                                label = q_pos2label.get((sub[0], sub[1], obj[0], obj[1], q[0], q[1]), (0,0,0,0))
+                                q_cur_ins.append(((left, right, ner_label_map[obj_label]), label[0], obj, (q_left, q_right, ner_label_map[qul_label]), label[1], q, label[2], label[3]))  
+                            elif self.args.nary_schema == "role":     
+                                label = q_pos2label.get((sub[0], sub[1], obj[0], obj[1], q[0], q[1]), (0,0,0))
+                                q_cur_ins.append(((left, right, ner_label_map[obj_label]), label[0], obj, (q_left, q_right, ner_label_map[qul_label]), label[1], q, label[2]))  
+                            elif self.args.nary_schema == "hypergraph":     
+                                label = q_pos2label.get((sub[0], sub[1], obj[0], obj[1], q[0], q[1]), (0,0))
+                                q_cur_ins.append(((left, right, ner_label_map[obj_label]), label[0], obj, (q_left, q_right, ner_label_map[qul_label]), label[1], q))  
 
 
                     maxR = max(maxR, len(cur_ins))
@@ -436,6 +564,9 @@ class ACEDataset(Dataset):
         q_labels = []
         q_ner_labels = []
         
+        q2_labels = []
+        q3_labels = []
+        
         mention_pos = []
         mention_2 = []
         q_mention_pos = []
@@ -490,13 +621,17 @@ class ACEDataset(Dataset):
                 temp_q_mention_2=[]
                 temp_q_labels=[]
                 temp_q_ner_labels=[]
+                
+                if self.args.nary_schema == "event" or self.args.nary_schema =="role":
+                    temp_q2_labels = []
+                if self.args.nary_schema == "event":
+                    temp_q3_labels = []                    
 
             temp_mention_pos.append((m2[0], m2[1]))
             temp_mention_2.append(obj[2])
                 
             temp_q_mention_pos.append((q_m2[0], q_m2[1]))
             temp_q_mention_2.append(obj[5])
-
 
             if x_idx % np.sqrt(len(entry['examples'])) == int(x_idx / np.sqrt(len(entry['examples']))) \
             or x_idx % np.sqrt(len(entry['examples'])) == sub_index \
@@ -516,6 +651,24 @@ class ACEDataset(Dataset):
                 temp_q_labels.append(q_label)
             temp_q_ner_labels.append(q_m2[2])
             
+            if self.args.nary_schema == "event" or self.args.nary_schema =="role":
+                if x_idx % np.sqrt(len(entry['examples'])) == int(x_idx / np.sqrt(len(entry['examples']))) \
+                or x_idx % np.sqrt(len(entry['examples'])) == sub_index \
+                or int(x_idx / np.sqrt(len(entry['examples']))) == sub_index \
+                or sub_index==-1:
+                    temp_q2_labels.append(-1)
+                else:
+                    temp_q2_labels.append(obj[6])
+            if self.args.nary_schema == "event":
+                if x_idx % np.sqrt(len(entry['examples'])) == int(x_idx / np.sqrt(len(entry['examples']))) \
+                or x_idx % np.sqrt(len(entry['examples'])) == sub_index \
+                or int(x_idx / np.sqrt(len(entry['examples']))) == sub_index \
+                or sub_index==-1:
+                    temp_q3_labels.append(-1)
+                else:
+                    temp_q3_labels.append(obj[7])
+
+            
             if (x_idx+1) % np.sqrt(len(entry['examples'])) == 0:
                 temp_mention_pos += [(0, 0)] * (num_pair - len(temp_mention_pos))  
                 temp_labels += [-1] * (num_pair - len(temp_labels)) 
@@ -524,6 +677,11 @@ class ACEDataset(Dataset):
                 temp_q_mention_pos += [(0, 0)] * (num_pair - len(temp_q_mention_pos))  
                 temp_q_labels += [-1] * (num_pair - len(temp_q_labels)) 
                 temp_q_ner_labels += [-1] * (num_pair - len(temp_q_ner_labels)) 
+                
+                if self.args.nary_schema == "event" or self.args.nary_schema =="role":
+                    temp_q2_labels += [-1] * (num_pair - len(temp_q2_labels)) 
+                if self.args.nary_schema == "event":
+                    temp_q3_labels += [-1] * (num_pair - len(temp_q3_labels)) 
 
                 mention_pos.append(temp_mention_pos)
                 mention_2.append(temp_mention_2)
@@ -534,6 +692,11 @@ class ACEDataset(Dataset):
                 q_mention_2.append(temp_q_mention_2)
                 q_labels.append(temp_q_labels)
                 q_ner_labels.append(temp_q_ner_labels)
+                
+                if self.args.nary_schema == "event" or self.args.nary_schema =="role":
+                    q2_labels.append(temp_q2_labels)
+                if self.args.nary_schema == "event":
+                    q3_labels.append(temp_q3_labels)
 
             # if self.use_typemarker:
             #     l_m = '[unused%d]' % ( 2 + m2[2] + len(self.ner_label_list)*2 )
@@ -557,19 +720,68 @@ class ACEDataset(Dataset):
         # ner_labels += [[-1] * num_pair] * (num_pair - len(ner_labels))
         ner_labels = ner_labels[0]
         q_ner_labels += [[-1] * num_pair] * (num_pair - len(q_ner_labels))
+        
+        if self.args.nary_schema == "event" or self.args.nary_schema =="role":
+            q2_labels += [[-1] * num_pair] * (num_pair - len(q2_labels))
+        if self.args.nary_schema == "event":
+            q3_labels += [[-1] * num_pair] * (num_pair - len(q3_labels))
+            
 
-        item = [torch.tensor(input_ids),
-                attention_mask,
-                torch.tensor(position_ids),
-                torch.tensor(sub_position),
-                torch.tensor(mention_pos),
-                torch.tensor(labels, dtype=torch.int64),
-                torch.tensor(ner_labels, dtype=torch.int64),
-                torch.tensor(sub_label, dtype=torch.int64),
-                torch.tensor(q_mention_pos),
-                torch.tensor(q_labels, dtype=torch.int64),
-                torch.tensor(q_ner_labels, dtype=torch.int64),
-        ]
+        if self.args.nary_schema == "hyperrelation":
+            item = [torch.tensor(input_ids),
+                    attention_mask,
+                    torch.tensor(position_ids),
+                    torch.tensor(sub_position),
+                    torch.tensor(mention_pos),
+                    torch.tensor(labels, dtype=torch.int64),
+                    torch.tensor(ner_labels, dtype=torch.int64),
+                    torch.tensor(sub_label, dtype=torch.int64),
+                    torch.tensor(q_mention_pos),
+                    torch.tensor(q_labels, dtype=torch.int64),
+                    torch.tensor(q_ner_labels, dtype=torch.int64),
+            ]
+        elif self.args.nary_schema == "event":
+            item = [torch.tensor(input_ids),
+                    attention_mask,
+                    torch.tensor(position_ids),
+                    torch.tensor(sub_position),
+                    torch.tensor(mention_pos),
+                    torch.tensor(labels, dtype=torch.int64),
+                    torch.tensor(ner_labels, dtype=torch.int64),
+                    torch.tensor(sub_label, dtype=torch.int64),
+                    torch.tensor(q_mention_pos),
+                    torch.tensor(q_labels, dtype=torch.int64),
+                    torch.tensor(q_ner_labels, dtype=torch.int64),
+                    torch.tensor(q2_labels, dtype=torch.int64),
+                    torch.tensor(q3_labels, dtype=torch.int64),
+            ]
+        if self.args.nary_schema == "role":
+            item = [torch.tensor(input_ids),
+                    attention_mask,
+                    torch.tensor(position_ids),
+                    torch.tensor(sub_position),
+                    torch.tensor(mention_pos),
+                    torch.tensor(labels, dtype=torch.int64),
+                    torch.tensor(ner_labels, dtype=torch.int64),
+                    torch.tensor(sub_label, dtype=torch.int64),
+                    torch.tensor(q_mention_pos),
+                    torch.tensor(q_labels, dtype=torch.int64),
+                    torch.tensor(q_ner_labels, dtype=torch.int64),
+                    torch.tensor(q2_labels, dtype=torch.int64),
+            ]
+        if self.args.nary_schema == "hypergraph":
+            item = [torch.tensor(input_ids),
+                    attention_mask,
+                    torch.tensor(position_ids),
+                    torch.tensor(sub_position),
+                    torch.tensor(mention_pos),
+                    torch.tensor(labels, dtype=torch.int64),
+                    torch.tensor(ner_labels, dtype=torch.int64),
+                    torch.tensor(sub_label, dtype=torch.int64),
+                    torch.tensor(q_mention_pos),
+                    torch.tensor(q_labels, dtype=torch.int64),
+                    torch.tensor(q_ner_labels, dtype=torch.int64),
+            ]
 
         if self.evaluate:
             item.append(entry['index'])
@@ -698,9 +910,10 @@ def train(args, model, tokenizer):
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     best_f1 = -1
 
-
+    epoch=0
 
     for _ in train_iterator:
+        epoch+=1
         if args.shuffle and _ > 0:
             train_dataset.initialize()
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
@@ -724,6 +937,11 @@ def train(args, model, tokenizer):
                 inputs['mention_pos'] = batch[4]
             if args.model_type.endswith('bertonedropoutnersub'):
                 inputs['sub_ner_labels'] = batch[7]
+                
+            if args.nary_schema == "event" or args.nary_schema =="role":
+                inputs["q2_labels"] = batch[11]
+            if args.nary_schema == "event":
+                inputs["q3_labels"] = batch[12]
 
             outputs = model(**inputs)
             loss = outputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
@@ -799,7 +1017,17 @@ def train(args, model, tokenizer):
                         results = evaluate(args, model, tokenizer)
                         f1 = results['q_f1'] # f1 = results['f1_with_ner']
                         tb_writer.add_scalar('q_f1', f1, global_step) # tb_writer.add_scalar('f1_with_ner', f1, global_step)
-
+                        num_q_pred = results['num_q_pred'] # f1 = results['f1_with_ner']
+                        tb_writer.add_scalar('num_hrf_pred', num_q_pred, global_step) # tb_writer.add_scalar('f1_with_ner', f1, global_step)
+                        
+                        step_information = dict()
+                        step_information["epoch"]=epoch
+                        step_information["global_step"]=global_step
+                        
+                        results.update(step_information)
+                        with open(os.path.join(args.output_dir, 'experimental_data.json'),"a") as f:
+                            f.write(json.dumps(results)+'\n')
+                        
                         if f1 > best_f1:
                             best_f1 = f1
                             print ('Best F1', best_f1)
@@ -902,14 +1130,26 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
 
             logits = outputs[0]
             q_logits = outputs[2]
+            if args.nary_schema == "event" or args.nary_schema == "role":
+                q2_logits = outputs[4]
+            if args.nary_schema == "event":
+                q3_logits = outputs[5]
 
             if args.eval_logsoftmax:  # perform a bit better
                 logits = torch.nn.functional.log_softmax(logits, dim=-1)
                 q_logits = torch.nn.functional.log_softmax(q_logits, dim=-1)
+                if args.nary_schema == "event" or args.nary_schema == "role":
+                    q2_logits = torch.nn.functional.log_softmax(q2_logits, dim=-1)
+                if args.nary_schema == "event":
+                    q3_logits = torch.nn.functional.log_softmax(q3_logits, dim=-1)
 
             elif args.eval_softmax:
                 logits = torch.nn.functional.softmax(logits, dim=-1)
                 q_logits = torch.nn.functional.softmax(q_logits, dim=-1)
+                if args.nary_schema == "event" or args.nary_schema == "role":
+                    q2_logits = torch.nn.functional.softmax(q2_logits, dim=-1)
+                if args.nary_schema == "event":
+                    q3_logits = torch.nn.functional.softmax(q3_logits, dim=-1)
 
             if args.use_ner_results or args.model_type.endswith('nonersub'):                 
                 ner_preds = ner_labels
@@ -918,6 +1158,10 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 q_ner_preds = torch.argmax(outputs[3], dim=-1)
             logits = logits.cpu().numpy()
             q_logits = q_logits.cpu().numpy()
+            if args.nary_schema == "event" or args.nary_schema == "role":
+                q2_logits = q2_logits.cpu().numpy()
+            if args.nary_schema == "event":
+                q3_logits = q3_logits.cpu().numpy()
             ner_preds = ner_preds.cpu().numpy()
             q_ner_preds = q_ner_preds.cpu().numpy()
             for i in range(len(indexs)):
@@ -926,19 +1170,19 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 m2s = batch_m2s[i]
                 q_m2s = q_batch_m2s[i]
                 example_subs.add(((index[0], index[1]), (sub[0], sub[1])))
-                # for j in range(len(m2s)):
-                #     obj = m2s[j]
-                #     ner_label = eval_dataset.ner_label_list[ner_preds[i,j]]
-                #     scores[(index[0], index[1])][( (sub[0], sub[1]), (obj[0], obj[1]))] = (logits[i, j].tolist(), ner_label)
-                # joint-label at here
+                
                 for j in range(len(m2s)):
                     ner_label = eval_dataset.ner_label_list[ner_preds[i,j]]
                     for k in range(len(q_m2s[j])):
                         obj = m2s[j][k]
                         q = q_m2s[j][k]
                         q_ner_label = eval_dataset.ner_label_list[q_ner_preds[i,j,k]]
-                        scores[(index[0], index[1])][( (sub[0], sub[1]), (obj[0], obj[1]),(q[0], q[1]))] = (logits[i, j, k].tolist(), ner_label,q_logits[i, j, k].tolist(), q_ner_label)
-    
+                        if args.nary_schema == "hyperrelation" or args.nary_schema == "hypergraph":
+                            scores[(index[0], index[1])][( (sub[0], sub[1]), (obj[0], obj[1]),(q[0], q[1]))] = (logits[i, j, k].tolist(), ner_label,q_logits[i, j, k].tolist(), q_ner_label)
+                        elif args.nary_schema == "role":
+                            scores[(index[0], index[1])][( (sub[0], sub[1]), (obj[0], obj[1]),(q[0], q[1]))] = (logits[i, j, k].tolist(), ner_label,q_logits[i, j, k].tolist(), q_ner_label,q2_logits[i, j, k].tolist())
+                        elif args.nary_schema == "event":
+                            scores[(index[0], index[1])][( (sub[0], sub[1]), (obj[0], obj[1]),(q[0], q[1]))] = (logits[i, j, k].tolist(), ner_label,q_logits[i, j, k].tolist(), q_ner_label,q2_logits[i, j, k].tolist(), q3_logits[i, j, k].tolist())
     cor = 0 
     q_cor = 0
     tot_pred = 0
@@ -953,308 +1197,939 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     tot_output_results = defaultdict(list)
     if not args.eval_unidirect:     # eval_unidrect is for ablation study
         # print (len(scores))
-        for example_index, pair_dict in sorted(scores.items(), key=lambda x:x[0]):  
-            visited  = set([])
-            sentence_results = []
-            for k123, (v123, v1_ner_label, q123, _) in pair_dict.items():
+        if args.nary_schema == "hyperrelation":
+            for example_index, pair_dict in sorted(scores.items(), key=lambda x:x[0]):  
+                visited  = set([])
+                sentence_results = []
+                for k123, (v123, v1_ner_label, q123, _) in pair_dict.items():
+                    
+                    if k123 in visited:
+                        continue
+                    visited.add(k123)
+                    # visited.add((k132))
+                    # visited.add((k231)
+                    # visited.add((k312)
+                    # visited.add((k321)
+
+                    # if v2_ner_label=='NIL' or q_ner_label=='NIL':
+                    #     continue
+                    v = list(v123)
+                    q = list(q123)
+                    m1 = k123[0]
+                    m2 = k123[1]
+                    m3 = k123[2]
+                    if m1 == m2 or m2 == m3 or m3 == m1:
+                        continue
+                    k213 = (m2, m1, m3)
+                    v213s = pair_dict.get(k213, None)
+                    if v213s is not None:
+                        visited.add(k213)
+                        v213, v2_ner_label, q213, _= v213s
+                        v213 = v213[ : len(sym_labels)] + v213[num_label:] + v213[len(sym_labels) : num_label]
+                        for j in range(len(v213)):
+                            v[j] += v213[j]
+                        for j in range(len(q213)):
+                            q[j] += q213[j]
+                    else:
+                        assert ( False )
+                        
+                    k132 = (m1, m3, m2)
+                    v132s = pair_dict.get(k132, None)
+                    if v132s is not None:
+                        visited.add(k132)
+                        v132, _, q132, _= v132s
+                        temp= v132
+                        v132 = q132
+                        q132 = temp
+                        for j in range(len(v132)):
+                            v[j] += v132[j]
+                        for j in range(len(q132)):
+                            q[j] += q132[j]
+                    else:
+                        assert ( False )
+                        
+                    k231 = (m2, m3, m1)
+                    v231s = pair_dict.get(k231, None)
+                    if v231s is not None:
+                        visited.add(k231)
+                        v231, _, q231, _= v231s
+                        temp= v231
+                        v231 = q231
+                        q231 = temp[ : len(sym_labels)] + temp[num_label:] + temp[len(sym_labels) : num_label]
+                        for j in range(len(v231)):
+                            v[j] += v231[j]
+                        for j in range(len(q231)):
+                            q[j] += q231[j]
+                    else:
+                        assert ( False )
+                        
+                    k312 = (m3, m1, m2)
+                    v312s = pair_dict.get(k312, None)
+                    if v312s is not None:
+                        visited.add(k312)
+                        v312, v3_ner_label, q312, _= v312s
+                        temp= v312
+                        v312 = q312[ : len(sym_labels)] + q312[num_q_label:] + q312[len(sym_labels) : num_q_label]
+                        q312 = temp
+                        for j in range(len(v312)):
+                            v[j] += v312[j]
+                        for j in range(len(q312)):
+                            q[j] += q312[j]
+                    else:
+                        assert ( False )
+                        
+                    k321 = (m3, m2, m1)
+                    v321s = pair_dict.get(k321, None)
+                    if v321s is not None:
+                        visited.add(k321)
+                        v321, _, q321, _= v321s
+                        q321 = q321[ : len(sym_labels)] + q321[num_q_label:] + q321[len(sym_labels) : num_q_label]
+                        for j in range(len(v321)):
+                            v[j] += v321[j]
+                        for j in range(len(q321)):
+                            q[j] += q321[j]
+                    else:
+                        assert ( False )
+
+                    # if v1_ner_label=='NIL':
+                    #     continue
+
+                    pred_label = np.argmax(v)
+                    q_pred_label = np.argmax(q)
+                    if pred_label>0 and q_pred_label>0:
+                        if pred_label >= num_label:
+                            pred_label = pred_label - num_label + len(sym_labels)
+                            m1, m2 , m3= m2, m1, m3
+                            v1_ner_label, v2_ner_label = v2_ner_label, v1_ner_label                    
+
+                        if q_pred_label >= num_q_label:
+                            m1, m2, m3=m3, m1, m2
+                            temp = pred_label
+                            pred_label = q_pred_label - num_q_label + len(sym_labels)
+                            q_pred_label = temp
+                            v1_ner_label, v2_ner_label, v3_ner_label = v3_ner_label, v1_ner_label, v2_ner_label 
+                            
+                        if label_list[pred_label].startswith('[k]'):
+                            m1,m2,m3=m1,m3,m2
+                            pred_label,q_pred_label=q_pred_label,pred_label
+                            v1_ner_label, v2_ner_label, v3_ner_label = v1_ner_label, v3_ner_label, v2_ner_label 
+
+                        pred_score = v[pred_label]
+                        q_pred_score = q[q_pred_label]
+
+                        sentence_results.append( (pred_score, m1, m2, pred_label, v1_ner_label, v2_ner_label, q_pred_score, m3, q_pred_label, q_ner_label) )
+
+                sentence_results.sort(key=lambda x: -x[0])
+                no_overlap = []
+                def is_overlap(m1, m2):
+                    if m2[0]<=m1[0] and m1[0]<=m2[1]:
+                        return True
+                    if m1[0]<=m2[0] and m2[0]<=m1[1]:
+                        return True
+                    return False
+
+                output_preds = []
+
+                for item in sentence_results:
+                    m1 = item[1]
+                    m2 = item[2]
+                    m3 = item[-3]
+                    overlap = False
+                    for x in no_overlap:
+                        _m1 = x[1]
+                        _m2 = x[2]
+                        _m3 = x[-3]
+                        # same relation type & overlap subject & overlap object --> delete
+                        if item[3]==x[3] and (is_overlap(m1, _m1) and is_overlap(m2, _m2)) and item[-2]==x[-2] and is_overlap(m3, _m3):
+                            overlap = True
+                            break
+
+                    if not overlap:
+                        no_overlap.append(item)
+
+                pos2ner = {}
+                q_pos2ner = {}
+                relation_visited=[]
+                rq_visited=[]
+
+                for item in no_overlap:
+                    m1 = item[1]
+                    m2 = item[2]
+                    m3 = item[-3]
+                    pred_label = label_list[item[3]]
+                    q_pred_label = q_label_list[item[-2]]
+                    ## rel predict
+                    # if pred_label in sym_labels:
+                    #     tot_pred += 1 # duplicate
+                    #     if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
+                    #         cor += 2
+                    # else:
+                    #     if (example_index, m1, m2, pred_label) in golden_labels:
+                    #         cor += 1        
+                    ## qul predict
+                    is_visited_r = True
+                    if (example_index, m1, m2, pred_label) not in relation_visited:
+                        tot_pred_r += 1
+                        relation_visited.append((example_index, m1, m2, pred_label))
+                        is_visited_r = False
+                        
+                    is_visited_rq = True
+                    if (example_index, m1, m2, pred_label, m3, q_pred_label) not in rq_visited:
+                        tot_pred += 1
+                        rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label))
+                        is_visited_rq = False
+                        
+                    if m1 not in pos2ner:
+                        pos2ner[m1] = item[4]
+                    if m2 not in pos2ner:
+                        pos2ner[m2] = item[5]
+                    if m3 not in q_pos2ner:
+                        q_pos2ner[m3] = item[-1]
+
+                    output_preds.append((m1, m2, pred_label, m3, q_pred_label))
+
+                    if not is_visited_r:
+                        if (example_index, m1, m2, pred_label) in golden_labels:
+                            cor += 1      
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
+                            cor_with_ner += 1        
+                    if not is_visited_rq:
+                        if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels:
+                            q_cor += 1   
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
+                            q_cor_with_ner += 1      
+
+                if do_test:
+                    #output_w.write(json.dumps(output_preds) + '\n')
+                    tot_output_results[example_index[0]].append((example_index[1],  output_preds))
+
+                # refine NER results
+                ner_results = list(global_predicted_ners[example_index])
+                for i in range(len(ner_results)):
+                    start, end, label = ner_results[i] 
+                    if (example_index, (start, end), label) in ner_golden_labels:
+                        ner_ori_cor += 1
+                    if (start, end) in pos2ner:
+                        label = pos2ner[(start, end)]
+                    if (example_index, (start, end), label) in ner_golden_labels:
+                        ner_cor += 1
+                    ner_tot_pred += 1
+        elif args.nary_schema == "event":
+            for example_index, pair_dict in sorted(scores.items(), key=lambda x:x[0]):  
+                visited  = set([])
+                sentence_results = []
+                for k123, (v123, v1_ner_label, q123, _,qb123,qc123) in pair_dict.items():
+                    
+                    if k123 in visited:
+                        continue
+                    visited.add(k123)
+                    # visited.add((k132))
+                    # visited.add((k231)
+                    # visited.add((k312)
+                    # visited.add((k321)
+
+                    # if v2_ner_label=='NIL' or q_ner_label=='NIL':
+                    #     continue
+                    v = list(v123)
+                    q = list(q123)
+                    qb = list (qb123)
+                    qc = list (qc123)
+                    m1 = k123[0]
+                    m2 = k123[1]
+                    m3 = k123[2]
+                    if m1 == m2 or m2 == m3 or m3 == m1:
+                        continue
+                    k213 = (m2, m1, m3)
+                    v213s = pair_dict.get(k213, None)
+                    if v213s is not None:
+                        visited.add(k213)
+                        v213, v2_ner_label, q213, _,qb213,qc213= v213s
+                        v213, q213,qb213,qc213 = v213, q213,qc213,qb213
+                        for j in range(len(v213)):
+                            v[j] += v213[j]
+                        for j in range(len(q213)):
+                            q[j] += q213[j]
+                        for j in range(len(qb213)):
+                            qb[j] += qb213[j]
+                        for j in range(len(qc213)):
+                            qc[j] += qc213[j]
+                    else:
+                        assert ( False )
+                        
+                    k132 = (m1, m3, m2)
+                    v132s = pair_dict.get(k132, None)
+                    if v132s is not None:
+                        visited.add(k132)
+                        v132, _, q132, _,qb132,qc132= v132s
+                        v132, q132,qb132,qc132 = v132, qc132,qb132,q132
+                        for j in range(len(v132)):
+                            v[j] += v132[j]
+                        for j in range(len(q132)):
+                            q[j] += q132[j]
+                        for j in range(len(qb132)):
+                            qb[j] += qb132[j]
+                        for j in range(len(qc132)):
+                            qc[j] += qc132[j]
+                    else:
+                        assert ( False )
+                        
+                    k231 = (m2, m3, m1)
+                    v231s = pair_dict.get(k231, None)
+                    if v231s is not None:
+                        visited.add(k231)
+                        v231, _, q231, _,qb231,qc231= v231s
+                        v231, q231,qb231,qc231 = v231, qb231,qc231,q231
+                        for j in range(len(v231)):
+                            v[j] += v231[j]
+                        for j in range(len(q231)):
+                            q[j] += q231[j]
+                        for j in range(len(qb231)):
+                            qb[j] += qb231[j]
+                        for j in range(len(qc231)):
+                            qc[j] += qc231[j]
+                    else:
+                        assert ( False )
+                        
+                    k312 = (m3, m1, m2)
+                    v312s = pair_dict.get(k312, None)
+                    if v312s is not None:
+                        visited.add(k312)
+                        v312, v3_ner_label, q312, _,qb312,qc312= v312s
+                        v312, q312,qb312,qc312 = v312, qc312,q312,qb312
+                        for j in range(len(v312)):
+                            v[j] += v312[j]
+                        for j in range(len(q312)):
+                            q[j] += q312[j]
+                        for j in range(len(qb312)):
+                            qb[j] += qb312[j]
+                        for j in range(len(qc312)):
+                            qc[j] += qc312[j]
+                    else:
+                        assert ( False )
+                        
+                    k321 = (m3, m2, m1)
+                    v321s = pair_dict.get(k321, None)
+                    if v321s is not None:
+                        visited.add(k321)
+                        v321, _, q321, _,qb321,qc321= v321s
+                        v321, q321,qb321,qc321 = v321, qb321,q321,qc321
+                        for j in range(len(v321)):
+                            v[j] += v321[j]
+                        for j in range(len(q321)):
+                            q[j] += q321[j]
+                        for j in range(len(qb321)):
+                            qb[j] += qb321[j]
+                        for j in range(len(qc321)):
+                            qc[j] += qc321[j]
+                    else:
+                        assert ( False )
+
+                    # if v1_ner_label=='NIL':
+                    #     continue
+
+                    pred_label = np.argmax(v)
+                    q_pred_label = np.argmax(q)
+                    qb_pred_label = np.argmax(qb)
+                    qc_pred_label = np.argmax(qc)
+                    if pred_label>0 and q_pred_label>0 and qb_pred_label and qc_pred_label>0:
+
+                        pred_score = v[pred_label]
+                        q_pred_score = q[q_pred_label]
+                        qb_pred_score = qb[qb_pred_label]
+                        qc_pred_score = qc[qc_pred_label]
+
+                        sentence_results.append( (pred_score, m1, m2, pred_label, v1_ner_label, v2_ner_label, q_pred_score, m3, q_pred_label, q_ner_label, qb_pred_label, qc_pred_label) )
+
+                sentence_results.sort(key=lambda x: -x[0])
+                no_overlap = []
+                def is_overlap(m1, m2):
+                    if m2[0]<=m1[0] and m1[0]<=m2[1]:
+                        return True
+                    if m1[0]<=m2[0] and m2[0]<=m1[1]:
+                        return True
+                    return False
+
+                output_preds = []
+
+                for item in sentence_results:
+                    m1 = item[1]
+                    m2 = item[2]
+                    m3 = item[-5]
+                    overlap = False
+                    for x in no_overlap:
+                        _m1 = x[1]
+                        _m2 = x[2]
+                        _m3 = x[-5]
+                        # same relation type & overlap subject & overlap object --> delete
+                        if item[3]==x[3] and (is_overlap(m1, _m1) and is_overlap(m2, _m2)) and item[-4]==x[-4] and is_overlap(m3, _m3) and item[-2]==x[-2]and item[-1]==x[-1]:
+                            overlap = True
+                            break
+
+                    if not overlap:
+                        no_overlap.append(item)
+
+                pos2ner = {}
+                q_pos2ner = {}
+                relation_visited=[]
+                rq_visited=[]
+
+                for item in no_overlap:
+                    m1 = item[1]
+                    m2 = item[2]
+                    m3 = item[-5]
+                    pred_label = label_list[item[3]]
+                    q_pred_label = q_label_list[item[-4]]
+                    qb_pred_label = q_label_list[item[-2]]
+                    qc_pred_label = q_label_list[item[-1]]
+                    ## rel predict
+                    # if pred_label in sym_labels:
+                    #     tot_pred += 1 # duplicate
+                    #     if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
+                    #         cor += 2
+                    # else:
+                    #     if (example_index, m1, m2, pred_label) in golden_labels:
+                    #         cor += 1        
+                    ## qul predict
+                    is_visited_r = True
+                    if (example_index, m1, m2, pred_label) not in relation_visited:
+                        tot_pred_r += 1
+                        relation_visited.append((example_index, m1, m2, pred_label))
+                        is_visited_r = False
+                        
+                    is_visited_rq = True
+                    if (example_index, m1, m2, pred_label, m3, q_pred_label, qb_pred_label, qc_pred_label) not in rq_visited:
+                        tot_pred += 1
+                        rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label, qb_pred_label, qc_pred_label))
+                        is_visited_rq = False
+                        
+                    if m1 not in pos2ner:
+                        pos2ner[m1] = item[4]
+                    if m2 not in pos2ner:
+                        pos2ner[m2] = item[5]
+                    if m3 not in q_pos2ner:
+                        q_pos2ner[m3] = item[-3]
+
+                    output_preds.append((pred_label, list(m1)+[qb_pred_label], list(m2)+[qc_pred_label], list(m3)+[q_pred_label]))
+
+                    if not is_visited_r:
+                        if (example_index, m1, m2, pred_label) in golden_labels:
+                            cor += 1      
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
+                            cor_with_ner += 1        
+                    if not is_visited_rq:
+                        if (example_index, m1, m2, pred_label, m3, q_pred_label, qb_pred_label, qc_pred_label) in q_golden_labels:
+                            q_cor += 1   
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label, qb_pred_label, qc_pred_label) in q_golden_labels_withner:
+                            q_cor_with_ner += 1      
+
+                if do_test:
+                    #output_w.write(json.dumps(output_preds) + '\n')
+                    tot_output_results[example_index[0]].append((example_index[1],  output_preds))
+
+                # refine NER results
+                ner_results = list(global_predicted_ners[example_index])
+                for i in range(len(ner_results)):
+                    start, end, label = ner_results[i] 
+                    if (example_index, (start, end), label) in ner_golden_labels:
+                        ner_ori_cor += 1
+                    if (start, end) in pos2ner:
+                        label = pos2ner[(start, end)]
+                    if (example_index, (start, end), label) in ner_golden_labels:
+                        ner_cor += 1
+                    ner_tot_pred += 1
+        elif args.nary_schema == "role":
+            for example_index, pair_dict in sorted(scores.items(), key=lambda x:x[0]):  
+                visited  = set([])
+                sentence_results = []
+                for k123, (v123, v1_ner_label, q123, _,qb123) in pair_dict.items():
+                    
+                    if k123 in visited:
+                        continue
+                    visited.add(k123)
+                    # visited.add((k132))
+                    # visited.add((k231)
+                    # visited.add((k312)
+                    # visited.add((k321)
+
+                    # if v2_ner_label=='NIL' or q_ner_label=='NIL':
+                    #     continue
+                    v = list(v123)
+                    q = list(q123)
+                    qb = list (qb123)
+                    m1 = k123[0]
+                    m2 = k123[1]
+                    m3 = k123[2]
+                    if m1 == m2 or m2 == m3 or m3 == m1:
+                        continue
+                    k213 = (m2, m1, m3)
+                    v213s = pair_dict.get(k213, None)
+                    if v213s is not None:
+                        visited.add(k213)
+                        v213, v2_ner_label, q213, _,qb213= v213s
+                        v213, q213,qb213 = qb213, q213, v213
+                        for j in range(len(v213)):
+                            v[j] += v213[j]
+                        for j in range(len(q213)):
+                            q[j] += q213[j]
+                        for j in range(len(qb213)):
+                            qb[j] += qb213[j]
+                    else:
+                        assert ( False )
+                        
+                    k132 = (m1, m3, m2)
+                    v132s = pair_dict.get(k132, None)
+                    if v132s is not None:
+                        visited.add(k132)
+                        v132, _, q132, _,qb132= v132s
+                        v132, q132,qb132 = q132,v132,qb132
+                        for j in range(len(v132)):
+                            v[j] += v132[j]
+                        for j in range(len(q132)):
+                            q[j] += q132[j]
+                        for j in range(len(qb132)):
+                            qb[j] += qb132[j]
+                    else:
+                        assert ( False )
+                        
+                    k231 = (m2, m3, m1)
+                    v231s = pair_dict.get(k231, None)
+                    if v231s is not None:
+                        visited.add(k231)
+                        v231, _, q231, _,qb231= v231s
+                        v231, q231,qb231 = qb231,v231, q231
+                        for j in range(len(v231)):
+                            v[j] += v231[j]
+                        for j in range(len(q231)):
+                            q[j] += q231[j]
+                        for j in range(len(qb231)):
+                            qb[j] += qb231[j]
+                    else:
+                        assert ( False )
+                        
+                    k312 = (m3, m1, m2)
+                    v312s = pair_dict.get(k312, None)
+                    if v312s is not None:
+                        visited.add(k312)
+                        v312, v3_ner_label, q312, _,qb312= v312s
+                        v312, q312,qb312 = qb312,v312, q312
+                        for j in range(len(v312)):
+                            v[j] += v312[j]
+                        for j in range(len(q312)):
+                            q[j] += q312[j]
+                        for j in range(len(qb312)):
+                            qb[j] += qb312[j]
+                    else:
+                        assert ( False )
+                        
+                    k321 = (m3, m2, m1)
+                    v321s = pair_dict.get(k321, None)
+                    if v321s is not None:
+                        visited.add(k321)
+                        v321, _, q321, _,qb321= v321s
+                        v321, q321,qb321 = v321,q321, qb321
+                        for j in range(len(v321)):
+                            v[j] += v321[j]
+                        for j in range(len(q321)):
+                            q[j] += q321[j]
+                        for j in range(len(qb321)):
+                            qb[j] += qb321[j]
+                    else:
+                        assert ( False )
+
+                    # if v1_ner_label=='NIL':
+                    #     continue
+
+                    pred_label = np.argmax(v)
+                    q_pred_label = np.argmax(q)
+                    qb_pred_label = np.argmax(qb)
+                    if pred_label>0 and q_pred_label>0 and qb_pred_label:
+
+                        pred_score = v[pred_label]
+                        q_pred_score = q[q_pred_label]
+                        qb_pred_score = qb[qb_pred_label]
+
+                        sentence_results.append( (pred_score, m1, m2, pred_label, v1_ner_label, v2_ner_label, q_pred_score, m3, q_pred_label, q_ner_label, qb_pred_label) )
+
+                sentence_results.sort(key=lambda x: -x[0])
+                no_overlap = []
+                def is_overlap(m1, m2):
+                    if m2[0]<=m1[0] and m1[0]<=m2[1]:
+                        return True
+                    if m1[0]<=m2[0] and m2[0]<=m1[1]:
+                        return True
+                    return False
+
+                output_preds = []
+
+                for item in sentence_results:
+                    m1 = item[1]
+                    m2 = item[2]
+                    m3 = item[-4]
+                    overlap = False
+                    for x in no_overlap:
+                        _m1 = x[1]
+                        _m2 = x[2]
+                        _m3 = x[-4]
+                        # same relation type & overlap subject & overlap object --> delete
+                        if item[3]==x[3] and (is_overlap(m1, _m1) and is_overlap(m2, _m2)) and item[-3]==x[-3] and is_overlap(m3, _m3) and item[-1]==x[-1]:
+                            overlap = True
+                            break
+
+                    if not overlap:
+                        no_overlap.append(item)
+
+                pos2ner = {}
+                q_pos2ner = {}
+                relation_visited=[]
+                rq_visited=[]
+
+                for item in no_overlap:
+                    m1 = item[1]
+                    m2 = item[2]
+                    m3 = item[-4]
+                    pred_label = q_label_list[item[3]]
+                    q_pred_label = q_label_list[item[-3]]
+                    qb_pred_label = q_label_list[item[-1]]
+
+                    ## rel predict
+                    # if pred_label in sym_labels:
+                    #     tot_pred += 1 # duplicate
+                    #     if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
+                    #         cor += 2
+                    # else:
+                    #     if (example_index, m1, m2, pred_label) in golden_labels:
+                    #         cor += 1        
+                    ## qul predict
+                    is_visited_r = True
+                    if (example_index, m1, m2, pred_label) not in relation_visited:
+                        tot_pred_r += 1
+                        relation_visited.append((example_index, m1, m2, pred_label))
+                        is_visited_r = False
+                        
+                    is_visited_rq = True
+                    if (example_index, m1, m2, pred_label, m3, q_pred_label, qb_pred_label) not in rq_visited:
+                        tot_pred += 1
+                        rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label, qb_pred_label))
+                        is_visited_rq = False
+                        
+                    if m1 not in pos2ner:
+                        pos2ner[m1] = item[4]
+                    if m2 not in pos2ner:
+                        pos2ner[m2] = item[5]
+                    if m3 not in q_pos2ner:
+                        q_pos2ner[m3] = item[-3]
+
+                    output_preds.append((list(m1)+[qb_pred_label], list(m2)+[pred_label], list(m3)+[q_pred_label]))
+
+                    if not is_visited_r:
+                        if (example_index, m1, m2, pred_label) in golden_labels:
+                            cor += 1      
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
+                            cor_with_ner += 1        
+                    if not is_visited_rq:
+                        if (example_index, m1, m2, pred_label, m3, q_pred_label, qb_pred_label) in q_golden_labels:
+                            q_cor += 1   
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label, qb_pred_label) in q_golden_labels_withner:
+                            q_cor_with_ner += 1      
+
+                if do_test:
+                    #output_w.write(json.dumps(output_preds) + '\n')
+                    tot_output_results[example_index[0]].append((example_index[1],  output_preds))
+
+                # refine NER results
+                ner_results = list(global_predicted_ners[example_index])
+                for i in range(len(ner_results)):
+                    start, end, label = ner_results[i] 
+                    if (example_index, (start, end), label) in ner_golden_labels:
+                        ner_ori_cor += 1
+                    if (start, end) in pos2ner:
+                        label = pos2ner[(start, end)]
+                    if (example_index, (start, end), label) in ner_golden_labels:
+                        ner_cor += 1
+                    ner_tot_pred += 1                    
+        elif args.nary_schema == "hypergraph":
+            for example_index, pair_dict in sorted(scores.items(), key=lambda x:x[0]):  
+                visited  = set([])
+                sentence_results = []
+                for k123, (v123, v1_ner_label, q123, _) in pair_dict.items():
+                    
+                    if k123 in visited:
+                        continue
+                    visited.add(k123)
+                    # visited.add((k132))
+                    # visited.add((k231)
+                    # visited.add((k312)
+                    # visited.add((k321)
+
+                    # if v2_ner_label=='NIL' or q_ner_label=='NIL':
+                    #     continue
+                    v = list(v123)
+                    q = list(q123)
+                    m1 = k123[0]
+                    m2 = k123[1]
+                    m3 = k123[2]
+                    if m1 == m2 or m2 == m3 or m3 == m1:
+                        continue
+                    k213 = (m2, m1, m3)
+                    v213s = pair_dict.get(k213, None)
+                    if v213s is not None:
+                        visited.add(k213)
+                        v213, v2_ner_label, q213, _= v213s
+                        for j in range(len(v213)):
+                            v[j] += v213[j]
+                        for j in range(len(q213)):
+                            q[j] += q213[j]
+                    else:
+                        assert ( False )
+                        
+                    k132 = (m1, m3, m2)
+                    v132s = pair_dict.get(k132, None)
+                    if v132s is not None:
+                        visited.add(k132)
+                        v132, _, q132, _= v132s
+                        for j in range(len(v132)):
+                            v[j] += v132[j]
+                        for j in range(len(q132)):
+                            q[j] += q132[j]
+                    else:
+                        assert ( False )
+                        
+                    k231 = (m2, m3, m1)
+                    v231s = pair_dict.get(k231, None)
+                    if v231s is not None:
+                        visited.add(k231)
+                        v231, _, q231, _= v231s
+                        for j in range(len(v231)):
+                            v[j] += v231[j]
+                        for j in range(len(q231)):
+                            q[j] += q231[j]
+                    else:
+                        assert ( False )
+                        
+                    k312 = (m3, m1, m2)
+                    v312s = pair_dict.get(k312, None)
+                    if v312s is not None:
+                        visited.add(k312)
+                        v312, v3_ner_label, q312, _= v312s
+                        for j in range(len(v312)):
+                            v[j] += v312[j]
+                        for j in range(len(q312)):
+                            q[j] += q312[j]
+                    else:
+                        assert ( False )
+                        
+                    k321 = (m3, m2, m1)
+                    v321s = pair_dict.get(k321, None)
+                    if v321s is not None:
+                        visited.add(k321)
+                        v321, _, q321, _= v321s
+                        for j in range(len(v321)):
+                            v[j] += v321[j]
+                        for j in range(len(q321)):
+                            q[j] += q321[j]
+                    else:
+                        assert ( False )
+
+                    # if v1_ner_label=='NIL':
+                    #     continue
+
+                    pred_label = np.argmax(v)
+                    q_pred_label = np.argmax(v)
+                    if pred_label>0:
+
+                        pred_score = v[pred_label]
+                        q_pred_score = q[q_pred_label]
+
+                        sentence_results.append( (pred_score, m1, m2, pred_label, v1_ner_label, v2_ner_label, q_pred_score, m3, q_pred_label, q_ner_label) )
+
+                sentence_results.sort(key=lambda x: -x[0])
+                no_overlap = []
+                def is_overlap(m1, m2):
+                    if m2[0]<=m1[0] and m1[0]<=m2[1]:
+                        return True
+                    if m1[0]<=m2[0] and m2[0]<=m1[1]:
+                        return True
+                    return False
+
+                output_preds = []
+
+                for item in sentence_results:
+                    m1 = item[1]
+                    m2 = item[2]
+                    m3 = item[-3]
+                    overlap = False
+                    for x in no_overlap:
+                        _m1 = x[1]
+                        _m2 = x[2]
+                        _m3 = x[-3]
+                        # same relation type & overlap subject & overlap object --> delete
+                        if item[3]==x[3] and (is_overlap(m1, _m1) and is_overlap(m2, _m2)) and item[-2]==x[-2] and is_overlap(m3, _m3):
+                            overlap = True
+                            break
+
+                    if not overlap:
+                        no_overlap.append(item)
+
+                pos2ner = {}
+                q_pos2ner = {}
+                relation_visited=[]
+                rq_visited=[]
+
+                for item in no_overlap:
+                    m1 = item[1]
+                    m2 = item[2]
+                    m3 = item[-3]
+                    pred_label = label_list[item[3]]
+                    q_pred_label = pred_label
+
+                    ## rel predict
+                    # if pred_label in sym_labels:
+                    #     tot_pred += 1 # duplicate
+                    #     if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
+                    #         cor += 2
+                    # else:
+                    #     if (example_index, m1, m2, pred_label) in golden_labels:
+                    #         cor += 1        
+                    ## qul predict
+                    is_visited_r = True
+                    if (example_index, m1, m2, pred_label) not in relation_visited:
+                        tot_pred_r += 1
+                        relation_visited.append((example_index, m1, m2, pred_label))
+                        is_visited_r = False
+                        
+                    is_visited_rq = True
+                    if (example_index, m1, m2, pred_label, m3, q_pred_label) not in rq_visited:
+                        tot_pred += 1
+                        rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label))
+                        is_visited_rq = False
+                        
+                    if m1 not in pos2ner:
+                        pos2ner[m1] = item[4]
+                    if m2 not in pos2ner:
+                        pos2ner[m2] = item[5]
+                    if m3 not in q_pos2ner:
+                        q_pos2ner[m3] = item[-2]
+
+                    output_preds.append((pred_label, list(m1), list(m2), list(m3)))
+
+                    if not is_visited_r:
+                        if (example_index, m1, m2, pred_label) in golden_labels:
+                            cor += 1      
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
+                            cor_with_ner += 1        
+                    if not is_visited_rq:
+                        if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels:
+                            q_cor += 1   
+                        if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
+                            q_cor_with_ner += 1      
+
+                if do_test:
+                    #output_w.write(json.dumps(output_preds) + '\n')
+                    tot_output_results[example_index[0]].append((example_index[1],  output_preds))
+
+                # refine NER results
+                ner_results = list(global_predicted_ners[example_index])
+                for i in range(len(ner_results)):
+                    start, end, label = ner_results[i] 
+                    if (example_index, (start, end), label) in ner_golden_labels:
+                        ner_ori_cor += 1
+                    if (start, end) in pos2ner:
+                        label = pos2ner[(start, end)]
+                    if (example_index, (start, end), label) in ner_golden_labels:
+                        ner_cor += 1
+                    ner_tot_pred += 1                          
+                      
+    # else:
+
+    #     for example_index, pair_dict in sorted(scores.items(), key=lambda x:x[0]):  
+    #         sentence_results = []
+    #         for k1, (v1, v2_ner_label) in pair_dict.items():
                 
-                if k123 in visited:
-                    continue
-                visited.add(k123)
-                # visited.add((k132))
-                # visited.add((k231)
-                # visited.add((k312)
-                # visited.add((k321)
-
-                # if v2_ner_label=='NIL' or q_ner_label=='NIL':
-                #     continue
-                v = list(v123)
-                q = list(q123)
-                m1 = k123[0]
-                m2 = k123[1]
-                m3 = k123[2]
-                if m1 == m2 or m2 == m3 or m3 == m1:
-                    continue
-                k213 = (m2, m1, m3)
-                v213s = pair_dict.get(k213, None)
-                if v213s is not None:
-                    visited.add(k213)
-                    v213, v2_ner_label, q213, _= v213s
-                    v213 = v213[ : len(sym_labels)] + v213[num_label:] + v213[len(sym_labels) : num_label]
-                    for j in range(len(v213)):
-                        v[j] += v213[j]
-                    for j in range(len(q213)):
-                        q[j] += q213[j]
-                else:
-                    assert ( False )
-                    
-                k132 = (m1, m3, m2)
-                v132s = pair_dict.get(k132, None)
-                if v132s is not None:
-                    visited.add(k132)
-                    v132, _, q132, _= v132s
-                    temp= v132
-                    v132 = q132
-                    q132 = temp
-                    for j in range(len(v132)):
-                        v[j] += v132[j]
-                    for j in range(len(q132)):
-                        q[j] += q132[j]
-                else:
-                    assert ( False )
-                    
-                k231 = (m2, m3, m1)
-                v231s = pair_dict.get(k231, None)
-                if v231s is not None:
-                    visited.add(k231)
-                    v231, _, q231, _= v231s
-                    temp= v231
-                    v231 = q231
-                    q231 = temp[ : len(sym_labels)] + temp[num_label:] + temp[len(sym_labels) : num_label]
-                    for j in range(len(v231)):
-                        v[j] += v231[j]
-                    for j in range(len(q231)):
-                        q[j] += q231[j]
-                else:
-                    assert ( False )
-                    
-                k312 = (m3, m1, m2)
-                v312s = pair_dict.get(k312, None)
-                if v312s is not None:
-                    visited.add(k312)
-                    v312, v3_ner_label, q312, _= v312s
-                    temp= v312
-                    v312 = q312[ : len(sym_labels)] + q312[num_q_label:] + q312[len(sym_labels) : num_q_label]
-                    q312 = temp
-                    for j in range(len(v312)):
-                        v[j] += v312[j]
-                    for j in range(len(q312)):
-                        q[j] += q312[j]
-                else:
-                    assert ( False )
-                    
-                k321 = (m3, m2, m1)
-                v321s = pair_dict.get(k321, None)
-                if v321s is not None:
-                    visited.add(k321)
-                    v321, _, q321, _= v321s
-                    q321 = q321[ : len(sym_labels)] + q321[num_q_label:] + q321[len(sym_labels) : num_q_label]
-                    for j in range(len(v321)):
-                        v[j] += v321[j]
-                    for j in range(len(q321)):
-                        q[j] += q321[j]
-                else:
-                    assert ( False )
-
-                # if v1_ner_label=='NIL':
-                #     continue
-
-                pred_label = np.argmax(v)
-                q_pred_label = np.argmax(q)
-                if pred_label>0 and q_pred_label>0:
-                    if pred_label >= num_label:
-                        pred_label = pred_label - num_label + len(sym_labels)
-                        m1, m2 , m3= m2, m1, m3
-                        v1_ner_label, v2_ner_label = v2_ner_label, v1_ner_label                    
-
-                    if q_pred_label >= num_q_label:
-                        m1, m2, m3=m3, m1, m2
-                        temp = pred_label
-                        pred_label = q_pred_label - num_q_label + len(sym_labels)
-                        q_pred_label = temp
-                        v1_ner_label, v2_ner_label, v3_ner_label = v3_ner_label, v1_ner_label, v2_ner_label 
-
-                    pred_score = v[pred_label]
-                    q_pred_score = q[q_pred_label]
-
-                    sentence_results.append( (pred_score, m1, m2, pred_label, v1_ner_label, v2_ner_label, q_pred_score, m3, q_pred_label, q_ner_label) )
-
-            sentence_results.sort(key=lambda x: -x[0])
-            no_overlap = []
-            def is_overlap(m1, m2):
-                if m2[0]<=m1[0] and m1[0]<=m2[1]:
-                    return True
-                if m1[0]<=m2[0] and m2[0]<=m1[1]:
-                    return True
-                return False
-
-            output_preds = []
-
-            for item in sentence_results:
-                m1 = item[1]
-                m2 = item[2]
-                m3 = item[-3]
-                overlap = False
-                for x in no_overlap:
-                    _m1 = x[1]
-                    _m2 = x[2]
-                    _m3 = x[-3]
-                    # same relation type & overlap subject & overlap object --> delete
-                    if item[3]==x[3] and (is_overlap(m1, _m1) and is_overlap(m2, _m2)) and item[-2]==x[-2] and is_overlap(m3, _m3):
-                        overlap = True
-                        break
-
-                if not overlap:
-                    no_overlap.append(item)
-
-            pos2ner = {}
-            q_pos2ner = {}
-            relation_visited=[]
-            rq_visited=[]
-
-            for item in no_overlap:
-                m1 = item[1]
-                m2 = item[2]
-                m3 = item[-3]
-                pred_label = label_list[item[3]]
-                q_pred_label = q_label_list[item[-2]]
-                ## rel predict
-                # if pred_label in sym_labels:
-                #     tot_pred += 1 # duplicate
-                #     if (example_index, m1, m2, pred_label) in golden_labels or (example_index, m2, m1, pred_label) in golden_labels:
-                #         cor += 2
-                # else:
-                #     if (example_index, m1, m2, pred_label) in golden_labels:
-                #         cor += 1        
-                ## qul predict
-                is_visited_r = True
-                if (example_index, m1, m2, pred_label) not in relation_visited:
-                    tot_pred_r += 1
-                    relation_visited.append((example_index, m1, m2, pred_label))
-                    is_visited_r = False
-                    
-                is_visited_rq = True
-                if (example_index, m1, m2, pred_label, m3, q_pred_label) not in rq_visited:
-                    tot_pred += 1
-                    rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label))
-                    is_visited_rq = False
-                    
-                if m1 not in pos2ner:
-                    pos2ner[m1] = item[4]
-                if m2 not in pos2ner:
-                    pos2ner[m2] = item[5]
-                if m3 not in q_pos2ner:
-                    q_pos2ner[m3] = item[-1]
-
-                output_preds.append((m1, m2, pred_label, m3, q_pred_label))
-
-                if not is_visited_r:
-                    if (example_index, m1, m2, pred_label) in golden_labels:
-                        cor += 1      
-                    if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
-                        cor_with_ner += 1        
-                if not is_visited_rq:
-                    if (example_index, m1, m2, pred_label, m3, q_pred_label) in q_golden_labels:
-                        q_cor += 1   
-                    if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
-                        q_cor_with_ner += 1      
-
-            if do_test:
-                #output_w.write(json.dumps(output_preds) + '\n')
-                tot_output_results[example_index[0]].append((example_index[1],  output_preds))
-
-            # refine NER results
-            ner_results = list(global_predicted_ners[example_index])
-            for i in range(len(ner_results)):
-                start, end, label = ner_results[i] 
-                if (example_index, (start, end), label) in ner_golden_labels:
-                    ner_ori_cor += 1
-                if (start, end) in pos2ner:
-                    label = pos2ner[(start, end)]
-                if (example_index, (start, end), label) in ner_golden_labels:
-                    ner_cor += 1
-                ner_tot_pred += 1
-        
-    else:
-
-        for example_index, pair_dict in sorted(scores.items(), key=lambda x:x[0]):  
-            sentence_results = []
-            for k1, (v1, v2_ner_label) in pair_dict.items():
-                
-                if v2_ner_label=='NIL':
-                    continue
-                v1 = list(v1)
-                m1 = k1[0]
-                m2 = k1[1]
-                if m1 == m2:
-                    continue
+    #             if v2_ner_label=='NIL':
+    #                 continue
+    #             v1 = list(v1)
+    #             m1 = k1[0]
+    #             m2 = k1[1]
+    #             if m1 == m2:
+    #                 continue
               
-                pred_label = np.argmax(v1)
-                if pred_label>0 and pred_label < num_label:
+    #             pred_label = np.argmax(v1)
+    #             if pred_label>0 and pred_label < num_label:
 
-                    pred_score = v1[pred_label]
+    #                 pred_score = v1[pred_label]
 
-                    sentence_results.append( (pred_score, m1, m2, pred_label, None, v2_ner_label) )
+    #                 sentence_results.append( (pred_score, m1, m2, pred_label, None, v2_ner_label) )
 
-            sentence_results.sort(key=lambda x: -x[0])
-            no_overlap = []
-            def is_overlap(m1, m2):
-                if m2[0]<=m1[0] and m1[0]<=m2[1]:
-                    return True
-                if m1[0]<=m2[0] and m2[0]<=m1[1]:
-                    return True
-                return False
+    #         sentence_results.sort(key=lambda x: -x[0])
+    #         no_overlap = []
+    #         def is_overlap(m1, m2):
+    #             if m2[0]<=m1[0] and m1[0]<=m2[1]:
+    #                 return True
+    #             if m1[0]<=m2[0] and m2[0]<=m1[1]:
+    #                 return True
+    #             return False
 
-            output_preds = []
+    #         output_preds = []
 
-            for item in sentence_results:
-                m1 = item[1]
-                m2 = item[2]
-                overlap = False
-                for x in no_overlap:
-                    _m1 = x[1]
-                    _m2 = x[2]
-                    if item[3]==x[3] and (is_overlap(m1, _m1) and is_overlap(m2, _m2)):
-                        overlap = True
-                        break
+    #         for item in sentence_results:
+    #             m1 = item[1]
+    #             m2 = item[2]
+    #             overlap = False
+    #             for x in no_overlap:
+    #                 _m1 = x[1]
+    #                 _m2 = x[2]
+    #                 if item[3]==x[3] and (is_overlap(m1, _m1) and is_overlap(m2, _m2)):
+    #                     overlap = True
+    #                     break
 
-                pred_label = label_list[item[3]]
+    #             pred_label = label_list[item[3]]
 
-                output_preds.append((m1, m2, pred_label))
+    #             output_preds.append((m1, m2, pred_label))
 
-                if not overlap:
-                    no_overlap.append(item)
+    #             if not overlap:
+    #                 no_overlap.append(item)
 
-            pos2ner = {}
-            predpos2ner = {}
-            ner_results = list(global_predicted_ners[example_index])
-            for start, end, label in ner_results:
-                predpos2ner[(start, end)] = label
+    #         pos2ner = {}
+    #         predpos2ner = {}
+    #         ner_results = list(global_predicted_ners[example_index])
+    #         for start, end, label in ner_results:
+    #             predpos2ner[(start, end)] = label
 
-            for item in no_overlap:
-                m1 = item[1]
-                m2 = item[2]
-                pred_label = label_list[item[3]]
-                tot_pred += 1
+    #         for item in no_overlap:
+    #             m1 = item[1]
+    #             m2 = item[2]
+    #             pred_label = label_list[item[3]]
+    #             tot_pred += 1
 
-                if (example_index, m1, m2, pred_label) in golden_labels:
-                    cor += 1        
+    #             if (example_index, m1, m2, pred_label) in golden_labels:
+    #                 cor += 1        
 
-                if m1 not in pos2ner:
-                    pos2ner[m1] = predpos2ner[m1]#item[4]
+    #             if m1 not in pos2ner:
+    #                 pos2ner[m1] = predpos2ner[m1]#item[4]
 
-                if m2 not in pos2ner:
-                    pos2ner[m2] = item[5]
+    #             if m2 not in pos2ner:
+    #                 pos2ner[m2] = item[5]
 
-                # if pred_label in sym_labels:
-                #     if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner \
-                #         or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label) in golden_labels_withner:
-                #         cor_with_ner += 2
-                # else:  
-                if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
-                    cor_with_ner += 1      
+    #             # if pred_label in sym_labels:
+    #             #     if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner \
+    #             #         or (example_index,  (m2[0], m2[1], pos2ner[m2]), (m1[0], m1[1], pos2ner[m1]), pred_label) in golden_labels_withner:
+    #             #         cor_with_ner += 2
+    #             # else:  
+    #             if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label) in golden_labels_withner:
+    #                 cor_with_ner += 1      
             
-            # refine NER results
-            ner_results = list(global_predicted_ners[example_index])
-            for i in range(len(ner_results)):
-                start, end, label = ner_results[i] 
-                if (example_index, (start, end), label) in ner_golden_labels:
-                    ner_ori_cor += 1
-                if (start, end) in pos2ner:
-                    label = pos2ner[(start, end)]
-                if (example_index, (start, end), label) in ner_golden_labels:
-                    ner_cor += 1
-                ner_tot_pred += 1
+    #         # refine NER results
+    #         ner_results = list(global_predicted_ners[example_index])
+    #         for i in range(len(ner_results)):
+    #             start, end, label = ner_results[i] 
+    #             if (example_index, (start, end), label) in ner_golden_labels:
+    #                 ner_ori_cor += 1
+    #             if (start, end) in pos2ner:
+    #                 label = pos2ner[(start, end)]
+    #             if (example_index, (start, end), label) in ner_golden_labels:
+    #                 ner_cor += 1
+    #             ner_tot_pred += 1
+
 
 
     evalTime = timeit.default_timer() - start_time
@@ -1293,15 +2168,15 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     logger.info("Result: %s", json.dumps(results))
 
     results_p = {'p':  p,  'p_with_ner': p_with_ner, 'q_p':  q_p, 'q_p_with_ner': q_p_with_ner,'ner_p': ner_p}
-
+    results.update(results_p)
     logger.info("Result: %s", json.dumps(results_p))
 
     results_r = {'r':  r,  'r_with_ner': r_with_ner, 'q_r':  q_r, 'q_r_with_ner': q_r_with_ner,'ner_r': ner_r}
-
+    results.update(results_r)
     logger.info("Result: %s", json.dumps(results_r))
     
     results_num = {'correct_r':  cor, 'num_r_ans':  tot_recall,  'num_r_pred': tot_pred_r, 'correct_q':  q_cor, 'num_q_ans':  q_tot_recall, 'num_q_pred': tot_pred}
-
+    results.update(results_num)
     logger.info("Result: %s", json.dumps(results_num))
 
     return results
@@ -1310,14 +2185,15 @@ def main():
     parser = argparse.ArgumentParser()
 
     ## Required parameters
-    parser.add_argument("--dataset", default='hyperred', type=str, help="The input dataset") # hyperred
-    parser.add_argument("--data_dir", default='datasets/hyperred', type=str, 
+    parser.add_argument("--dataset", default='hyperace05_hyperrelation', type=str, help="The input dataset") # hyperred
+    parser.add_argument("--data_dir", default='datasets/hyperace05_processed_data/hyperace05_hyperrelation', type=str, 
                         help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # datasets/hyperred
+    parser.add_argument("--nary_schema",  default="hyperrelation", type=str) # "triple", "hypergraph", "role", "hyperrelation", "event"
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
     parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
-    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre-bert-42", type=str, 
+    parser.add_argument("--output_dir", default="hyperace05re_models/hyperace05re_hyperrelation-bert-42", type=str, 
                         help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre-bert-42"
 
     ## Other parameters
@@ -1363,7 +2239,7 @@ def main():
 
     parser.add_argument('--logging_steps', type=int, default=5,
                         help="Log every X updates steps.")
-    parser.add_argument('--save_steps', type=int, default=1000,
+    parser.add_argument('--save_steps', type=int, default=10,
                         help="Save checkpoint every X updates steps.")# 5000
     parser.add_argument("--eval_all_checkpoints", action='store_true',default=True,
                         help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number")
@@ -1392,11 +2268,10 @@ def main():
     parser.add_argument("--dev_file",  default="dev.json", type=str)
     parser.add_argument("--test_file",  default="test.json", type=str) # "ace05ner_models/PL-Marker-ace05-bert-42/ent_pred_test.json"
     parser.add_argument("--label_file",  default="label.json", type=str)
-    parser.add_argument("--n-ary_schema",  default="hyper-relational", type=str) # "triple-based", "hypergraph", "role", "hyper-relational"
     
     parser.add_argument('--max_pair_length', type=int, default=32,  help="")
-    parser.add_argument("--alpha", default=0.02, type=float)#1.0
-    parser.add_argument("--q_alpha", default=0.02, type=float)#1.0      
+    parser.add_argument("--alpha", default=0.2, type=float)#1.0
+    parser.add_argument("--q_alpha", default=0.2, type=float)#1.0      
     parser.add_argument('--save_results', action='store_true')
     parser.add_argument('--no_test', action='store_true')
     parser.add_argument('--eval_logsoftmax', action='store_true',default=True)
@@ -1420,6 +2295,8 @@ def main():
             task_ner_labels[args.dataset] = [list(labels['id'].keys())[i] for i in labels['entity']]
             task_rel_labels[args.dataset] = [list(labels['id'].keys())[i] for i in labels['relation']]
             task_q_labels[args.dataset] = [list(labels['id'].keys())[i] for i in labels['qualifier']]
+    else:
+        raise ValueError("No label file ({}).".format(args.label_dir))
     
     # Makedir output_dir
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train and not args.overwrite_output_dir:
@@ -1441,14 +2318,6 @@ def main():
                 shutil.copyfile(script, dst_file)
     if args.do_train and args.local_rank in [-1, 0] and args.output_dir.find('test')==-1:
         create_exp_dir(args.output_dir, scripts_to_save=['run_re.py', 'transformers/src/transformers/modeling_bert.py', 'transformers/src/transformers/modeling_albert.py'])
-        
-    # # Setup distant debugging if needed
-    # if args.server_ip and args.server_port:
-    #     # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
-    #     import ptvsd
-    #     print("Waiting for debugger attach")
-    #     ptvsd.enable_attach(address=(args.server_ip, args.server_port), redirect_output=True)
-    #     ptvsd.wait_for_attach()
 
     # Setup CUDA, GPU & distributed training
     if args.local_rank == -1 or args.no_cuda:
@@ -1471,9 +2340,14 @@ def main():
     # Set seed
     set_seed(args)
 
-    num_labels = len(set(task_rel_labels[args.dataset]+task_q_labels[args.dataset]))*2+1
-    num_ner_labels = len(task_ner_labels[args.dataset])+1
-    num_q_labels = len(set(task_rel_labels[args.dataset]+task_q_labels[args.dataset]))*2+1
+    if args.nary_schema == "hyperrelation":
+        num_labels = len(set(task_rel_labels[args.dataset]+task_q_labels[args.dataset]))*2+1
+        num_ner_labels = len(task_ner_labels[args.dataset])+1
+        num_q_labels = len(set(task_rel_labels[args.dataset]+task_q_labels[args.dataset]))*2+1
+    elif args.nary_schema == "event" or "hypergraph" or "role":
+        num_labels = len(set(task_rel_labels[args.dataset]))+1
+        num_ner_labels = len(task_ner_labels[args.dataset])+1
+        num_q_labels = len(set(task_q_labels[args.dataset]))+1
 
     # Load pretrained model and tokenizer
     if args.local_rank not in [-1, 0]:
@@ -1490,6 +2364,7 @@ def main():
     config.q_alpha = args.q_alpha
     config.num_ner_labels = num_ner_labels
     config.num_q_labels = num_q_labels
+    config.nary_schema = args.nary_schema
 
     model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config)
 

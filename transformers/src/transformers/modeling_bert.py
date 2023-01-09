@@ -2227,23 +2227,33 @@ class BertForACEBothOneDropoutSub(BertPreTrainedModel):
         self.num_labels = config.num_labels
         self.num_ner_labels = config.num_ner_labels
         self.num_q_labels = config.num_q_labels
+        self.nary_schema = config.nary_schema
 
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
         self.ner_classifier = nn.Linear(config.hidden_size*2, self.num_ner_labels)
-
-        self.re_classifier_m1 = nn.Linear(config.hidden_size*2, self.num_labels)
-        self.re_classifier_m2 = nn.Linear(config.hidden_size*2, self.num_labels)
-        self.re_classifier_m3 = nn.Linear(config.hidden_size*2, self.num_labels)
-        
-        self.q_re_classifier_m1 = nn.Linear(config.hidden_size*2, self.num_q_labels)
-        self.q_re_classifier_m2 = nn.Linear(config.hidden_size*2, self.num_q_labels)
-        self.q_re_classifier_m3 = nn.Linear(config.hidden_size*2, self.num_q_labels)
+        if self.nary_schema != "role":
+            self.re_classifier_m1 = nn.Linear(config.hidden_size*2, self.num_labels)
+            self.re_classifier_m2 = nn.Linear(config.hidden_size*2, self.num_labels)
+            self.re_classifier_m3 = nn.Linear(config.hidden_size*2, self.num_labels)
+            
+        if self.nary_schema != "hypergraph":
+            self.q_re_classifier_m1 = nn.Linear(config.hidden_size*2, self.num_q_labels)
+            self.q_re_classifier_m2 = nn.Linear(config.hidden_size*2, self.num_q_labels)
+            self.q_re_classifier_m3 = nn.Linear(config.hidden_size*2, self.num_q_labels)
 
         self.alpha = torch.tensor([config.alpha] + [1.0] * (self.num_labels-1), dtype=torch.float32)
         self.ner_alpha = torch.tensor([config.alpha] + [1.0] * (self.num_ner_labels-1), dtype=torch.float32)
         self.q_alpha = torch.tensor([config.q_alpha] + [1.0] * (self.num_q_labels-1), dtype=torch.float32)
+        
+        if self.nary_schema == "event" or self.nary_schema =="role":
+            self.q2_re_classifier_m1 = nn.Linear(config.hidden_size*2, self.num_q_labels)
+            self.q2_re_classifier_m2 = nn.Linear(config.hidden_size*2, self.num_q_labels)
+            self.q2_re_classifier_m3 = nn.Linear(config.hidden_size*2, self.num_q_labels)       
+            self.q3_re_classifier_m1 = nn.Linear(config.hidden_size*2, self.num_q_labels)
+            self.q3_re_classifier_m2 = nn.Linear(config.hidden_size*2, self.num_q_labels)
+            self.q3_re_classifier_m3 = nn.Linear(config.hidden_size*2, self.num_q_labels)           
 
         self.init_weights()
 
@@ -2261,6 +2271,8 @@ class BertForACEBothOneDropoutSub(BertPreTrainedModel):
         ner_labels=None,
         q_labels=None,
         q_ner_labels=None,
+        q2_labels=None,
+        q3_labels=None
     ):
         
         outputs = self.bert(
@@ -2297,37 +2309,81 @@ class BertForACEBothOneDropoutSub(BertPreTrainedModel):
         m1_end_states = hidden_states[torch.arange(bsz), sub_positions[:, 1]]
         m1_states = torch.cat([m1_start_states, m1_end_states], dim=-1)
 
-        ##
-        m1_scores = self.re_classifier_m1(m1_states)  # bsz, num_label
-        m2_scores = self.re_classifier_m2(r_feature_vector) # bsz, ent_len, num_label
-        m3_scores = self.re_classifier_m3(q_feature_vector)
-        re_prediction_scores = m1_scores.unsqueeze(1).unsqueeze(2) + m2_scores + m3_scores
+        if self.nary_schema != "role":
+            ##
+            m1_scores = self.re_classifier_m1(m1_states)  # bsz, num_label
+            m2_scores = self.re_classifier_m2(r_feature_vector) # bsz, ent_len, num_label
+            m3_scores = self.re_classifier_m3(q_feature_vector)
+            re_prediction_scores = m1_scores.unsqueeze(1).unsqueeze(2) + m2_scores + m3_scores
         
-        ## qulifier_re
-        q_m1_scores = self.q_re_classifier_m1(m1_states)  # bsz, num_label
-        q_m2_scores = self.q_re_classifier_m2(r_feature_vector) # bsz, ent_len, num_label
-        q_m3_scores = self.q_re_classifier_m3(q_feature_vector)
-        q_re_prediction_scores = q_m1_scores.unsqueeze(1).unsqueeze(2) + q_m2_scores + q_m3_scores      
-
-        outputs = (re_prediction_scores, ner_prediction_scores, q_re_prediction_scores, q_ner_prediction_scores) #+ outputs[2:]  # Add hidden states and attention if they are here
+        if self.nary_schema != "hypergraph":
+            ## qulifier_re
+            q_m1_scores = self.q_re_classifier_m1(m1_states)  # bsz, num_label
+            q_m2_scores = self.q_re_classifier_m2(r_feature_vector) # bsz, ent_len, num_label
+            q_m3_scores = self.q_re_classifier_m3(q_feature_vector)
+            q_re_prediction_scores = q_m1_scores.unsqueeze(1).unsqueeze(2) + q_m2_scores + q_m3_scores      
         
+        if self.nary_schema == "event" or self.nary_schema =="role":
+            q2_m1_scores = self.q2_re_classifier_m1(m1_states)  # bsz, num_label
+            q2_m2_scores = self.q2_re_classifier_m2(r_feature_vector) # bsz, ent_len, num_label
+            q2_m3_scores = self.q2_re_classifier_m3(q_feature_vector)
+            q2_re_prediction_scores = q2_m1_scores.unsqueeze(1).unsqueeze(2) + q2_m2_scores + q2_m3_scores      
+            q3_m1_scores = self.q3_re_classifier_m1(m1_states)  # bsz, num_label
+            q3_m2_scores = self.q3_re_classifier_m2(r_feature_vector) # bsz, ent_len, num_label
+            q3_m3_scores = self.q3_re_classifier_m3(q_feature_vector)
+            q3_re_prediction_scores = q3_m1_scores.unsqueeze(1).unsqueeze(2) + q3_m2_scores + q3_m3_scores               
+
         
-
-
-        if labels is not None:
-            # labels = torch.stack(([labels]*ent_len),dim=1)
-            # labels = torch.where(q_labels==-1,-1,labels)           
-            loss_fct_re = CrossEntropyLoss(ignore_index=-1,  weight=self.alpha.to(re_prediction_scores))
-            loss_fct_ner = CrossEntropyLoss(ignore_index=-1,  weight=self.ner_alpha.to(ner_prediction_scores))
-            loss_fct_q_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q_re_prediction_scores))
-            re_loss = loss_fct_re(re_prediction_scores.view(-1, self.num_labels), labels.view(-1))
-            ner_loss = loss_fct_ner(ner_prediction_scores.view(-1, self.num_ner_labels), ner_labels.view(-1))
-            q_re_loss = loss_fct_q_re(q_re_prediction_scores.view(-1, self.num_q_labels), q_labels.view(-1))
-            # q_ner_loss = loss_fct_ner(q_ner_prediction_scores.view(-1, self.num_ner_labels), q_ner_labels.view(-1))
-
-            loss = re_loss + ner_loss + q_re_loss
-            outputs = (loss, re_loss, ner_loss, q_re_loss) + outputs
-
+        if self.nary_schema == "hyperrelation":
+            outputs = (re_prediction_scores, ner_prediction_scores, q_re_prediction_scores, q_ner_prediction_scores) #+ outputs[2:]  # Add hidden states and attention if they are here
+            
+            if labels is not None:         
+                loss_fct_re = CrossEntropyLoss(ignore_index=-1,  weight=self.alpha.to(re_prediction_scores))
+                loss_fct_ner = CrossEntropyLoss(ignore_index=-1,  weight=self.ner_alpha.to(ner_prediction_scores))
+                loss_fct_q_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q_re_prediction_scores))
+                re_loss = loss_fct_re(re_prediction_scores.view(-1, self.num_labels), labels.view(-1))
+                ner_loss = loss_fct_ner(ner_prediction_scores.view(-1, self.num_ner_labels), ner_labels.view(-1))
+                q_re_loss = loss_fct_q_re(q_re_prediction_scores.view(-1, self.num_q_labels), q_labels.view(-1))
+                loss = re_loss + ner_loss + q_re_loss
+                outputs = (loss, re_loss, ner_loss, q_re_loss) + outputs
+                
+        elif self.nary_schema == "event":
+            outputs = (re_prediction_scores, ner_prediction_scores, q_re_prediction_scores, q_ner_prediction_scores, q2_re_prediction_scores, q3_re_prediction_scores)   
+            if labels is not None:              
+                loss_fct_re = CrossEntropyLoss(ignore_index=-1,  weight=self.alpha.to(re_prediction_scores))
+                loss_fct_ner = CrossEntropyLoss(ignore_index=-1,  weight=self.ner_alpha.to(ner_prediction_scores))
+                loss_fct_q_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q_re_prediction_scores))
+                loss_fct_q2_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q2_re_prediction_scores))
+                loss_fct_q3_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q3_re_prediction_scores))
+                re_loss = loss_fct_re(re_prediction_scores.view(-1, self.num_labels), labels.view(-1))
+                ner_loss = loss_fct_ner(ner_prediction_scores.view(-1, self.num_ner_labels), ner_labels.view(-1))
+                q_re_loss = loss_fct_q_re(q_re_prediction_scores.view(-1, self.num_q_labels), q_labels.view(-1))
+                q2_re_loss = loss_fct_q2_re(q2_re_prediction_scores.view(-1, self.num_q_labels), q2_labels.view(-1))
+                q3_re_loss = loss_fct_q3_re(q3_re_prediction_scores.view(-1, self.num_q_labels), q3_labels.view(-1))
+                loss = re_loss + ner_loss + q_re_loss + q2_re_loss + q3_re_loss
+                outputs = (loss, re_loss, ner_loss, q_re_loss) + outputs     
+        elif self.nary_schema == "role":
+            outputs = (q_re_prediction_scores, ner_prediction_scores, q2_re_prediction_scores, q_ner_prediction_scores, q3_re_prediction_scores)    
+            if labels is not None:              
+                loss_fct_ner = CrossEntropyLoss(ignore_index=-1,  weight=self.ner_alpha.to(ner_prediction_scores))
+                loss_fct_q_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q_re_prediction_scores))
+                loss_fct_q2_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q2_re_prediction_scores))
+                loss_fct_q3_re = CrossEntropyLoss(ignore_index=-1,  weight=self.q_alpha.to(q3_re_prediction_scores))
+                ner_loss = loss_fct_ner(ner_prediction_scores.view(-1, self.num_ner_labels), ner_labels.view(-1))
+                q_re_loss = loss_fct_q_re(q_re_prediction_scores.view(-1, self.num_q_labels), labels.view(-1))
+                q2_re_loss = loss_fct_q2_re(q2_re_prediction_scores.view(-1, self.num_q_labels), q_labels.view(-1))
+                q3_re_loss = loss_fct_q3_re(q3_re_prediction_scores.view(-1, self.num_q_labels), q2_labels.view(-1))
+                loss = ner_loss + q_re_loss + q2_re_loss + q3_re_loss
+                outputs = (loss, q_re_loss, ner_loss, q2_re_loss) + outputs   
+        elif self.nary_schema == "hypergraph":
+            outputs = (re_prediction_scores, ner_prediction_scores, re_prediction_scores, q_ner_prediction_scores)    
+            if labels is not None:              
+                loss_fct_re = CrossEntropyLoss(ignore_index=-1,  weight=self.alpha.to(re_prediction_scores))
+                loss_fct_ner = CrossEntropyLoss(ignore_index=-1,  weight=self.ner_alpha.to(ner_prediction_scores))
+                re_loss = loss_fct_re(re_prediction_scores.view(-1, self.num_labels), labels.view(-1))
+                ner_loss = loss_fct_ner(ner_prediction_scores.view(-1, self.num_ner_labels), ner_labels.view(-1))
+                loss = re_loss + ner_loss
+                outputs = (loss, re_loss, ner_loss, re_loss) + outputs         
         return outputs  # (masked_lm_loss), prediction_scores, (hidden_states), (attentions)
 
 
