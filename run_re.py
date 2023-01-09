@@ -195,8 +195,8 @@ class ACEDataset(Dataset):
         maxL = 0
         for l_idx, line in tqdm(enumerate(f)):
             
-            if l_idx > 100:
-                break
+            # if l_idx > 100:
+            #     break
             
             data = json.loads(line)
             data = self.process_to_hyperrelation(data)
@@ -911,6 +911,7 @@ def train(args, model, tokenizer):
     best_f1 = -1
 
     epoch=0
+    os.remove(os.path.join(args.output_dir, 'experimental_data.json'))
 
     for _ in train_iterator:
         epoch+=1
@@ -2239,7 +2240,7 @@ def main():
 
     parser.add_argument('--logging_steps', type=int, default=5,
                         help="Log every X updates steps.")
-    parser.add_argument('--save_steps', type=int, default=10,
+    parser.add_argument('--save_steps', type=int, default=1000,
                         help="Save checkpoint every X updates steps.")# 5000
     parser.add_argument("--eval_all_checkpoints", action='store_true',default=True,
                         help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number")
