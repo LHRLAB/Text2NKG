@@ -2463,14 +2463,36 @@ def main():
 ##################################################################################################
     ## Required parameters
     # selec-dataset/naryschema !/.
-    parser.add_argument("--dataset", default='hyperred_hyperrelation', type=str) # "hyperred_hyperrelation" !.
-    parser.add_argument("--nary_schema",  default="hyperrelation", type=str) # "hyperrelation",("event", "role", "hypergraph") .
-    parser.add_argument("--data_dir", default='datasets/hyperred_processed_data/hyperred_hyperrelation', type=str) # "datasets/hyperred_processed_data/hyperred_hyperrelation" !!.
-    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bert-42", type=str) # "hyperredre_models/hyperredre_hyperrelation-bert-42" !!.ms
+    parser.add_argument("--dataset", default='hyperred_hyperrelation', type=str) 
+    # 1."hyperred_hyperrelation" 2."hyperred_event" 3."hyperred_role" 4."hyperred_hypergraph"
+    # 5."hyperace05_hyperrelation" 6."hyperace05_event" 7."hyperace05_role" 8."hyperace05_hypergraph"
+    parser.add_argument("--nary_schema",  default="hyperrelation", type=str) 
+    # 1."hyperrelation", 2."event" 3."role" 4."hypergraph"
+    # 5."hyperrelation", 6."event" 7."role" 8."hypergraph"
+    parser.add_argument("--data_dir", default='datasets/hyperred_processed_data/hyperred_hyperrelation', type=str) 
+    # 1."datasets/hyperred_processed_data/hyperred_hyperrelation"
+    # 2."datasets/hyperred_processed_data/hyperred_event"
+    # 3."datasets/hyperred_processed_data/hyperred_role"
+    # 4."datasets/hyperred_processed_data/hyperred_hypergraph"
+    # 5."datasets/hyperace05_processed_data/hyperace05_hyperrelation"
+    # 6."datasets/hyperace05_processed_data/hyperace05_event"
+    # 7."datasets/hyperace05_processed_data/hyperace05_role"
+    # 8."datasets/hyperace05_processed_data/hyperace05_hypergraph"
+    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bert-42", type=str) 
+    # 1."hyperredre_models/hyperredre_hyperrelation-bert-42"
+    # 2."hyperredre_models/hyperredre_event-bert-42"
+    # 3."hyperredre_models/hyperredre_role-bert-42"
+    # 4."hyperredre_models/hyperredre_hypergraph-bert-42"
+    # 5."hyperace05re_models/hyperace05re_hyperrelation-bert-42"
+    # 6."hyperace05re_models/hyperace05re_event-bert-42"
+    # 7."hyperace05re_models/hyperace05re_role-bert-42"
+    # 8."hyperace05re_models/hyperace05re_hypergraph-bert-42"
+    parser.add_argument("--num_train_epochs", default=10.0, type=float) 
+    # (hyperred) 1,2,3,4:  10.0 
+    # (hyperace05) 5,6,7,8:  100.0
 ##################################################################################################    
-    # basic settings for debug
+    # select-cuda
     parser.add_argument("--cuda_device", default="1", type=str) # "0"
-    parser.add_argument("--num_train_epochs", default=10.0, type=float) # hyperred: 10.0, hyperace05: 100.0
 ##################################################################################################
     # select-train/test
     parser.add_argument("--do_train", action='store_true',default=True,
