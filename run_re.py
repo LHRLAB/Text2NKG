@@ -1696,7 +1696,11 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 if do_test:
                     #output_w.write(json.dumps(output_preds) + '\n')
                     tot_output_results[example_index[0]].append((example_index[1],  output_preds))
-                    event_output_preds=list(set(event_output_preds))
+                    temp=[]
+                    for item in event_output_preds:
+                        if item not in temp:
+                            temp.append(item)
+                    event_output_preds=item
                     tot_event_output_results[example_index[0]].append((example_index[1],  event_output_preds))
 
                 # refine NER results
@@ -2465,6 +2469,8 @@ def main():
                         help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # "datasets/hyperred_processed_data/hyperred_hyperrelation" !!!
     parser.add_argument("--output_dir", default="hyperace05re_models/hyperace05re_event-bert-42", type=str, 
                         help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre_hyperrelation-bert-42" !!!!!
+    parser.add_argument('--seed', type=int, default=42,
+                        help="random seed for initialization") # 42,43,44,45,46
 ##################################################################################################    
     # basic settings for debug
     parser.add_argument("--num_train_epochs", default=1.0, type=float,
@@ -2474,7 +2480,7 @@ def main():
     parser.add_argument("--smallerdataset", default=False, type=bool) # False
 ##################################################################################################
     # select-train/test
-    parser.add_argument("--do_train", action='store_true',default=True,
+    parser.add_argument("--do_train", action='store_true',default=False,
                         help="Whether to run training.") # True/False
     parser.add_argument("--do_eval", action='store_true',default=True,
                         help="Whether to run eval on the dev set.") #True
@@ -2537,8 +2543,7 @@ def main():
                         help="Overwrite the content of the output directory")
     parser.add_argument('--overwrite_cache', action='store_true',
                         help="Overwrite the cached training and evaluation sets")
-    parser.add_argument('--seed', type=int, default=42,
-                        help="random seed for initialization")
+
 
     parser.add_argument('--fp16', action='store_true',default=True,
                         help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit")
