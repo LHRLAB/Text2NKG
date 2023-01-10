@@ -127,40 +127,81 @@ class ACEDataset(Dataset):
         
     def process_to_hyperrelation(self, data):
         if self.args.nary_schema == "hyperrelation":
-            return data
-        elif self.args.nary_schema == "event":
+            hr_data = dict()
+            hr_data['sentences']=[]
+            hr_data['ner']=[]
+            hr_data['relations']=[]
+            hr_data["clusters"]=[]
+            hr_data["doc_key"]=""
             hr_rels = []
-            for sen_rels in data["relations"]:
+            for i, sen_rels in enumerate(data["relations"]):
+                hr_sen_rels=[]
+                for rel in sen_rels:
+                    if len(rel[5]) >=1:
+                        hr_rel = rel
+                        hr_sen_rels.append(hr_rel)
+                if len(hr_sen_rels)!=0:
+                    hr_data['sentences'].append(data['sentences'][i])
+                    hr_data['ner'].append(data['ner'][i])
+                    hr_data['relations'].append(hr_sen_rels)    
+            return hr_data
+        elif self.args.nary_schema == "event":
+            hr_data = dict()
+            hr_data['sentences']=[]
+            hr_data['ner']=[]
+            hr_data['relations']=[]
+            hr_data["clusters"]=[]
+            hr_data["doc_key"]=""
+            hr_rels = []
+            for i, sen_rels in enumerate(data["relations"]):
                 hr_sen_rels=[]
                 for rel in sen_rels:
                     if len(rel) >=4:
                         hr_rel = [rel[1][0],rel[1][1],rel[2][0],rel[2][1],rel[0],rel[3:],rel[1][2],rel[2][2]]
                         hr_sen_rels.append(hr_rel)
-                hr_rels.append(hr_sen_rels)
-            data["relations"] = hr_rels
-            return data
+                if len(hr_sen_rels)!=0:
+                    hr_data['sentences'].append(data['sentences'][i])
+                    hr_data['ner'].append(data['ner'][i])
+                    hr_data['relations'].append(hr_sen_rels)  
+            return hr_data
         elif self.args.nary_schema == "role":
+            hr_data = dict()
+            hr_data['sentences']=[]
+            hr_data['ner']=[]
+            hr_data['relations']=[]
+            hr_data["clusters"]=[]
+            hr_data["doc_key"]=""
             hr_rels = []
-            for sen_rels in data["relations"]:
+            for i, sen_rels in enumerate(data["relations"]):
                 hr_sen_rels=[]
                 for rel in sen_rels:
                     if len(rel) >=3:
                         hr_rel = [rel[0][0],rel[0][1],rel[1][0],rel[1][1],rel[1][2],rel[2:],rel[0][2]]
                         hr_sen_rels.append(hr_rel)
-                hr_rels.append(hr_sen_rels)
-            data["relations"] = hr_rels
-            return data
+                if len(hr_sen_rels)!=0:
+                    hr_data['sentences'].append(data['sentences'][i])
+                    hr_data['ner'].append(data['ner'][i])
+                    hr_data['relations'].append(hr_sen_rels)  
+            return hr_data
         elif self.args.nary_schema == "hypergraph":
+            hr_data = dict()
+            hr_data['sentences']=[]
+            hr_data['ner']=[]
+            hr_data['relations']=[]
+            hr_data["clusters"]=[]
+            hr_data["doc_key"]=""
             hr_rels = []
-            for sen_rels in data["relations"]:
+            for i, sen_rels in enumerate(data["relations"]):
                 hr_sen_rels=[]
                 for rel in sen_rels:
                     if len(rel) >=4:
                         hr_rel = [rel[1][0],rel[1][1],rel[2][0],rel[2][1],rel[0],rel[3:],rel[0]]
                         hr_sen_rels.append(hr_rel)
-                hr_rels.append(hr_sen_rels)
-            data["relations"] = hr_rels
-            return data
+                if len(hr_sen_rels)!=0:
+                    hr_data['sentences'].append(data['sentences'][i])
+                    hr_data['ner'].append(data['ner'][i])
+                    hr_data['relations'].append(hr_sen_rels)  
+            return hr_data
                     
  
     def initialize(self):
@@ -195,13 +236,15 @@ class ACEDataset(Dataset):
         maxL = 0
         for l_idx, line in tqdm(enumerate(f)):
             
-            # if l_idx > 100:
-            #     break
+            if self.args.smallerdataset:
+                if l_idx > 100:
+                    break
             
             data = json.loads(line)
             data = self.process_to_hyperrelation(data)
+            if len(data['relations'])==0:
+                continue
             
-
             if self.args.output_dir.find('test')!=-1:
                 if len(self.data) > 100:
                     break
@@ -911,7 +954,8 @@ def train(args, model, tokenizer):
     best_f1 = -1
 
     epoch=0
-    os.remove(os.path.join(args.output_dir, 'experimental_data.json'))
+    if os.path.exists(os.path.join(args.output_dir, 'experimental_data.json')):
+        os.remove(os.path.join(args.output_dir, 'experimental_data.json'))
 
     for _ in train_iterator:
         epoch+=1
@@ -1196,6 +1240,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     ner_tot_pred = 0
     ner_ori_cor = 0
     tot_output_results = defaultdict(list)
+    tot_event_output_results = defaultdict(list)
     if not args.eval_unidirect:     # eval_unidrect is for ablation study
         # print (len(scores))
         if args.nary_schema == "hyperrelation":
@@ -1219,8 +1264,9 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                     m1 = k123[0]
                     m2 = k123[1]
                     m3 = k123[2]
-                    if m1 == m2 or m2 == m3 or m3 == m1:
-                        continue
+                    if not args.sameentity:
+                        if m1 == m2 or m2 == m3 or m3 == m1:
+                            continue
                     k213 = (m2, m1, m3)
                     v213s = pair_dict.get(k213, None)
                     if v213s is not None:
@@ -1311,10 +1357,16 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                             v1_ner_label, v2_ner_label, v3_ner_label = v3_ner_label, v1_ner_label, v2_ner_label 
                             
                         if label_list[pred_label].startswith('[k]'):
+                            if q_label_list[q_pred_label].startswith('[k]'):
+                                continue
                             m1,m2,m3=m1,m3,m2
                             pred_label,q_pred_label=q_pred_label,pred_label
                             v1_ner_label, v2_ner_label, v3_ner_label = v1_ner_label, v3_ner_label, v2_ner_label 
 
+                        if label_list[pred_label].startswith('[r]'):
+                            if q_label_list[q_pred_label].startswith('[r]'):
+                                continue
+                            
                         pred_score = v[pred_label]
                         q_pred_score = q[q_pred_label]
 
@@ -1380,12 +1432,16 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                         rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label))
                         is_visited_rq = False
                         
-                    if m1 not in pos2ner:
-                        pos2ner[m1] = item[4]
-                    if m2 not in pos2ner:
-                        pos2ner[m2] = item[5]
-                    if m3 not in q_pos2ner:
-                        q_pos2ner[m3] = item[-1]
+                    ner_results = list(global_predicted_ners[example_index])   
+                    for m in ner_results:
+                        pos2ner[(m[0],m[1])]=m[2]
+                        q_pos2ner[(m[0],m[1])]=m[2]
+                    # if m1 not in pos2ner:
+                    #     pos2ner[m1] = item[4]
+                    # if m2 not in pos2ner:
+                    #     pos2ner[m2] = item[5]
+                    # if m3 not in q_pos2ner:
+                    #     q_pos2ner[m3] = item[-1]
 
                     output_preds.append((m1, m2, pred_label, m3, q_pred_label))
 
@@ -1400,9 +1456,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                         if (example_index, (m1[0], m1[1], pos2ner[m1]), (m2[0], m2[1], pos2ner[m2]), pred_label, (m3[0], m3[1], q_pos2ner[m3]), q_pred_label) in q_golden_labels_withner:
                             q_cor_with_ner += 1      
 
-                if do_test:
-                    #output_w.write(json.dumps(output_preds) + '\n')
-                    tot_output_results[example_index[0]].append((example_index[1],  output_preds))
+                tot_output_results[example_index[0]].append((example_index[1],  output_preds))
 
                 # refine NER results
                 ner_results = list(global_predicted_ners[example_index])
@@ -1438,8 +1492,9 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                     m1 = k123[0]
                     m2 = k123[1]
                     m3 = k123[2]
-                    if m1 == m2 or m2 == m3 or m3 == m1:
-                        continue
+                    if not args.sameentity:
+                        if m1 == m2 or m2 == m3 or m3 == m1:
+                            continue
                     k213 = (m2, m1, m3)
                     v213s = pair_dict.get(k213, None)
                     if v213s is not None:
@@ -1551,6 +1606,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                     return False
 
                 output_preds = []
+                event_output_preds = []
 
                 for item in sentence_results:
                     m1 = item[1]
@@ -1603,14 +1659,28 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                         rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label, qb_pred_label, qc_pred_label))
                         is_visited_rq = False
                         
-                    if m1 not in pos2ner:
-                        pos2ner[m1] = item[4]
-                    if m2 not in pos2ner:
-                        pos2ner[m2] = item[5]
-                    if m3 not in q_pos2ner:
-                        q_pos2ner[m3] = item[-3]
-
+                    ner_results = list(global_predicted_ners[example_index])   
+                    for m in ner_results:
+                        pos2ner[(m[0],m[1])]=m[2]
+                        q_pos2ner[(m[0],m[1])]=m[2]
+                    # if m1 not in pos2ner:
+                    #     pos2ner[m1] = item[4]
+                    # if m2 not in pos2ner:
+                    #     pos2ner[m2] = item[5]
+                    # if m3 not in q_pos2ner:
+                    #     q_pos2ner[m3] = item[-1]
+                    
+                    if pos2ner[m1] == "Trigger":
+                        qb_pred_label == "Trigger"
+                    if pos2ner[m2] == "Trigger":
+                        qc_pred_label == "Trigger"
+                    if pos2ner[m3] == "Trigger":
+                        q_pred_label == "Trigger"
+                        
                     output_preds.append((pred_label, list(m1)+[qb_pred_label], list(m2)+[qc_pred_label], list(m3)+[q_pred_label]))
+                    event_output_preds.append((pred_label, list(m1)+[qb_pred_label]))
+                    event_output_preds.append((pred_label, list(m2)+[qc_pred_label]))
+                    event_output_preds.append((pred_label, list(m3)+[q_pred_label]))
 
                     if not is_visited_r:
                         if (example_index, m1, m2, pred_label) in golden_labels:
@@ -1626,6 +1696,8 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                 if do_test:
                     #output_w.write(json.dumps(output_preds) + '\n')
                     tot_output_results[example_index[0]].append((example_index[1],  output_preds))
+                    event_output_preds=list(set(event_output_preds))
+                    tot_event_output_results[example_index[0]].append((example_index[1],  event_output_preds))
 
                 # refine NER results
                 ner_results = list(global_predicted_ners[example_index])
@@ -1660,8 +1732,9 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                     m1 = k123[0]
                     m2 = k123[1]
                     m3 = k123[2]
-                    if m1 == m2 or m2 == m3 or m3 == m1:
-                        continue
+                    if not args.sameentity:
+                        if m1 == m2 or m2 == m3 or m3 == m1:
+                            continue
                     k213 = (m2, m1, m3)
                     v213s = pair_dict.get(k213, None)
                     if v213s is not None:
@@ -1813,12 +1886,16 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                         rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label, qb_pred_label))
                         is_visited_rq = False
                         
-                    if m1 not in pos2ner:
-                        pos2ner[m1] = item[4]
-                    if m2 not in pos2ner:
-                        pos2ner[m2] = item[5]
-                    if m3 not in q_pos2ner:
-                        q_pos2ner[m3] = item[-3]
+                    ner_results = list(global_predicted_ners[example_index])   
+                    for m in ner_results:
+                        pos2ner[(m[0],m[1])]=m[2]
+                        q_pos2ner[(m[0],m[1])]=m[2]
+                    # if m1 not in pos2ner:
+                    #     pos2ner[m1] = item[4]
+                    # if m2 not in pos2ner:
+                    #     pos2ner[m2] = item[5]
+                    # if m3 not in q_pos2ner:
+                    #     q_pos2ner[m3] = item[-1]
 
                     output_preds.append((list(m1)+[qb_pred_label], list(m2)+[pred_label], list(m3)+[q_pred_label]))
 
@@ -1869,8 +1946,9 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                     m1 = k123[0]
                     m2 = k123[1]
                     m3 = k123[2]
-                    if m1 == m2 or m2 == m3 or m3 == m1:
-                        continue
+                    if not args.sameentity:
+                        if m1 == m2 or m2 == m3 or m3 == m1:
+                            continue
                     k213 = (m2, m1, m3)
                     v213s = pair_dict.get(k213, None)
                     if v213s is not None:
@@ -2004,12 +2082,16 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                         rq_visited.append((example_index, m1, m2, pred_label, m3, q_pred_label))
                         is_visited_rq = False
                         
-                    if m1 not in pos2ner:
-                        pos2ner[m1] = item[4]
-                    if m2 not in pos2ner:
-                        pos2ner[m2] = item[5]
-                    if m3 not in q_pos2ner:
-                        q_pos2ner[m3] = item[-2]
+                    ner_results = list(global_predicted_ners[example_index])   
+                    for m in ner_results:
+                        pos2ner[(m[0],m[1])]=m[2]
+                        q_pos2ner[(m[0],m[1])]=m[2]
+                    # if m1 not in pos2ner:
+                    #     pos2ner[m1] = item[4]
+                    # if m2 not in pos2ner:
+                    #     pos2ner[m2] = item[5]
+                    # if m3 not in q_pos2ner:
+                    #     q_pos2ner[m3] = item[-1]
 
                     output_preds.append((pred_label, list(m1), list(m2), list(m3)))
 
@@ -2135,10 +2217,40 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
 
     evalTime = timeit.default_timer() - start_time
     logger.info("  Evaluation done in total %f secs (%f example per second)", evalTime,  len(global_predicted_ners) / evalTime)
+    
+    output_w = open(os.path.join(args.output_dir, 'pred_results.json'), 'w')
 
     if do_test:
-        output_w = open(os.path.join(args.output_dir, 'pred_results.json'), 'w')
+        output_w = open(os.path.join(args.output_dir, 'test_pred_results.json'), 'w')
         json.dump(tot_output_results, output_w)
+        output_w.close()
+        if args.nary_schema == "hyperrelation":
+            # to gran format， result_set 是一个二维list，每一行对应一个段落下抽取的所有超关系
+            result_set = to_gran_format(result_file=os.path.join(args.output_dir, 'test_pred_results.json'), label_file=os.path.join(args.data_dir, args.test_file), output_file=os.path.join(args.output_dir, 'test_hkg_results.json'))
+            # 合并 result_set 每一行中的主三元组一样的超关系，
+            res_comp_table = compaction(result_set, result_comp_file=os.path.join(args.output_dir, 'test_hkg_results_comp.json'))
+            # 精确率
+            results_comp = statistic(res_comp_table, test_file = os.path.join(args.data_dir, args.test_file)) 
+            output_w = open(os.path.join(args.output_dir, 'test_pred_results_comp.json'), 'w')
+            json.dump(results_comp, output_w) 
+            output_w.close()         
+        if args.nary_schema == "event":
+            output_ew = open(os.path.join(args.output_dir, 'event_pred_results.json'), 'w')
+            json.dump(tot_output_results, output_ew)
+    else:
+        output_w = open(os.path.join(args.output_dir, 'valid_pred_results.json'), 'w')
+        json.dump(tot_output_results, output_w)
+        output_w.close()
+        if args.nary_schema == "hyperrelation":
+            # to gran format， result_set 是一个二维list，每一行对应一个段落下抽取的所有超关系
+            result_set = to_gran_format(result_file=os.path.join(args.output_dir, 'valid_pred_results.json'), label_file=os.path.join(args.data_dir, args.dev_file), output_file=os.path.join(args.output_dir, 'valid_hkg_results.json'))
+            # 合并 result_set 每一行中的主三元组一样的超关系，
+            res_comp_table = compaction(result_set, result_comp_file=os.path.join(args.output_dir, 'valid_hkg_results_comp.json'))
+            # 精确率
+            results_comp = statistic(res_comp_table, test_file = os.path.join(args.data_dir, args.dev_file))      
+            output_w = open(os.path.join(args.output_dir, 'valid_pred_results_comp.json'), 'w')
+            json.dump(results_comp, output_w) 
+            output_w.close()
 
     ner_p = ner_cor / ner_tot_pred if ner_tot_pred > 0 else 0 
     ner_r = ner_cor / len(ner_golden_labels) 
@@ -2147,21 +2259,21 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     p = cor / tot_pred_r if tot_pred_r > 0 else 0 
     r = cor / tot_recall 
     f1 = 2 * (p * r) / (p + r) if cor > 0 else 0.0
-    assert(tot_recall==len(golden_labels)/2)
+    # assert(tot_recall==len(golden_labels)/2)
 
     q_p = q_cor / tot_pred if tot_pred > 0 else 0 
     q_r = q_cor / q_tot_recall 
     q_f1 = 2 * (q_p * q_r) / (q_p + q_r) if q_cor > 0 else 0.0
-    assert(q_tot_recall==len(q_golden_labels)/6)
+    # assert(q_tot_recall==len(q_golden_labels)/6)
 
     p_with_ner = cor_with_ner / tot_pred_r if tot_pred_r > 0 else 0 
     r_with_ner = cor_with_ner / tot_recall
-    assert(tot_recall==len(golden_labels_withner)/2)
+    # assert(tot_recall==len(golden_labels_withner)/2)
     f1_with_ner = 2 * (p_with_ner * r_with_ner) / (p_with_ner + r_with_ner) if cor_with_ner > 0 else 0.0
 
     q_p_with_ner = q_cor_with_ner / tot_pred if tot_pred > 0 else 0 
     q_r_with_ner = q_cor_with_ner / q_tot_recall
-    assert(q_tot_recall==len(q_golden_labels_withner)/6)
+    # assert(q_tot_recall==len(q_golden_labels_withner)/6)
     q_f1_with_ner = 2 * (q_p_with_ner * q_r_with_ner) / (q_p_with_ner + q_r_with_ner) if q_cor_with_ner > 0 else 0.0
 
     results = {'f1':  f1,  'f1_with_ner': f1_with_ner, 'q_f1':  q_f1, 'q_f1_with_ner': q_f1_with_ner,'ner_f1': ner_f1}
@@ -2179,25 +2291,207 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     results_num = {'correct_r':  cor, 'num_r_ans':  tot_recall,  'num_r_pred': tot_pred_r, 'correct_q':  q_cor, 'num_q_ans':  q_tot_recall, 'num_q_pred': tot_pred}
     results.update(results_num)
     logger.info("Result: %s", json.dumps(results_num))
+    
+    if args.nary_schema == "hyperrelation":
+        results.update(results_comp)
 
     return results
 
+def to_gran_format(result_file, label_file, output_file):
+    resf = open(result_file, 'r')
+    res_dict = json.load(resf)
+    testf = open(label_file, "r")
+    test_lines = testf.readlines()
+    if os.path.exists(output_file):
+        os.remove(output_file)
+    rawf = open(output_file, "a")
+    res_set = []
+    for i in range(0, test_lines.__len__()):
+        if str(i) not in res_dict.keys():
+            test_dict = json.loads(test_lines[i])
+            num_sens = len(test_dict["relations"])
+            res_dict[str(i)] = []
+            for k in range(num_sens):
+                res_dict[str(i)].append([k,[]])
+    for i in range(0, test_lines.__len__()):
+        hypers = []
+        # res_set.append([])
+        test_dict = json.loads(test_lines[i])
+        sentence = test_dict["sentences"][0]
+        for hyper_relation in res_dict[str(i)]:
+            
+            for hr in hyper_relation[1]:
+                sub = ""
+                obj = ""
+                att = ""
+                for index in range(hr[0][0], hr[0][1]):
+                    sub = sub + sentence[index] + " "
+                sub = sub + sentence[hr[0][1]]
+                for index in range(hr[1][0], hr[1][1]):
+                    obj = obj + sentence[index] + " "
+                obj = obj + sentence[hr[1][1]]
+                for index in range(hr[3][0], hr[3][1]):
+                    att = att + sentence[index] + " "
+                att = att + sentence[hr[3][1]]
+                hyper = {"N": 3, "relation": hr[2], "subject": sub, "object": obj, hr[4]: [att]}
+                hyper = json.dumps(hyper) + "\n"
+                hypers.append(hyper)
+        rawf.writelines(hypers)
+        res_set.append(hypers)
+    return res_set
+
+def compaction(res_set, result_comp_file):
+    if os.path.exists(result_comp_file):
+        os.remove(result_comp_file)
+    resf_comp = open(result_comp_file, "a")
+    res_table = []
+
+    for res_line in res_set:
+        res_comp_line = []
+        #用 map 将主三元组相同的超关系归到一类
+        hy_map = {}
+        for index in range(res_line.__len__()):
+            res_dict = json.loads(res_line[index])
+            rso = res_dict["relation"] + res_dict["subject"] + res_dict["object"]
+            if rso in hy_map.keys():
+                hy_map[rso].append(res_dict)
+            else:
+                hy_map[rso] = [res_dict]
+        # 构建合并后的超关系
+        for rso, ds in hy_map.items():
+            t_d = {"N": 0}
+            ext=0
+            for d in ds:
+                for k, v in d.items():
+                    if k in t_d.keys() and k!="relation" and k!="subject"and k!="object"and k!="N":
+                        t_d[k]+=v
+                        ext+=1
+                    else:
+                        t_d[k]=v
+            t_d["N"] = t_d.__len__() - 2 +ext
+            res_comp_line.append(json.dumps(t_d))
+        res_table.append(res_comp_line)
+        formal_res_comp_line = []
+        for hyper_relation in res_comp_line:
+            formal_res_comp_line.append(hyper_relation + "\n")
+        resf_comp.writelines(formal_res_comp_line)
+    return res_table
+
+def statistic(res_table, test_file):
+    testf = open(test_file, "r")
+    test_lines = testf.readlines()
+    num_result = 0
+    match = 0
+    num_label = 0
+    N_of_result = {}
+    N_of_test = {}
+    for i in range(0, test_lines.__len__()):
+        res_list = res_table[i]
+        test_dict = json.loads(test_lines[i])
+        label_relations = test_dict["relations"][0]
+        sentence = test_dict["sentences"][0]
+
+        text_label_relations = []
+        for label_relation in label_relations:
+            sub = ""
+            obj = ""
+            att = ""
+            text_label_relation = {"N": 0}
+            for index in range(label_relation[0], label_relation[1]):
+                sub = sub + sentence[index] + " "
+            sub = sub + sentence[label_relation[1]]
+            text_label_relation["relation"] = label_relation[4]
+            text_label_relation["subject"] = sub
+            for index in range(label_relation[2], label_relation[3]):
+                obj = obj + sentence[index] + " "
+            obj = obj + sentence[label_relation[3]]
+            text_label_relation["object"] = obj
+            ext=0
+            for att_pair in label_relation[5]:
+                for index in range(att_pair[0], att_pair[1]):
+                    att = att + sentence[index] + " "
+                att = att + sentence[att_pair[1]]
+                if att_pair[2] in text_label_relation.keys():
+                    text_label_relation[att_pair[2]] += [att]
+                    ext+=1
+                else:
+                    text_label_relation[att_pair[2]] = [att]
+            text_label_relation["N"] = text_label_relation.__len__() - 2 +ext
+            num_label += 1
+            text_label_relations.append(json.dumps(text_label_relation))
+
+        # 在同一个段落里作比较
+        for res_hr in res_list:
+            num_result += 1
+            for label_hr in text_label_relations:
+                if res_hr == label_hr:
+                    match += 1
+
+        for res_hr in res_list:
+            res_hr = json.loads(res_hr)
+            if res_hr["N"] in N_of_result.keys():
+                N_of_result[res_hr["N"]] += 1
+            else:
+                N_of_result[res_hr["N"]] = 1
+
+        for label_hr in text_label_relations:
+            label_hr = json.loads(label_hr)
+            if label_hr["N"] in N_of_test.keys():
+                N_of_test[label_hr["N"]] += 1
+            else:
+                N_of_test[label_hr["N"]] = 1
+    print("match_comp = " + match.__str__())
+    print("num_pred_comp = " + num_result.__str__())
+    print("num_ans_comp = " + num_label.__str__())
+    p = match / num_result if num_result > 0 else 0.0
+    r = match / num_label
+    f1 = 2 * (p * r) / (p + r) if match > 0 else 0.0
+    print("p_comp = " + p.__str__())
+    print("r_comp = " + r.__str__())
+    print("f1_comp = " + f1.__str__())
+    print("N_of_pred_comp = " + N_of_result.__str__())
+    print("N_of_ans_comp = " + N_of_test.__str__())
+    return {"p_comp": p, "r_comp": r, "f1_comp": f1, "N_of_pred_comp": N_of_result, "N_of_ans_comp": N_of_test}
+
+
 def main():
     parser = argparse.ArgumentParser()
-
+##################################################################################################
     ## Required parameters
-    parser.add_argument("--dataset", default='hyperace05_hyperrelation', type=str, help="The input dataset") # hyperred
-    parser.add_argument("--data_dir", default='datasets/hyperace05_processed_data/hyperace05_hyperrelation', type=str, 
-                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # datasets/hyperred
-    parser.add_argument("--nary_schema",  default="hyperrelation", type=str) # "triple", "hypergraph", "role", "hyperrelation", "event"
+    # dataset/naryschema-select
+    parser.add_argument("--dataset", default='hyperace05_event', type=str, help="The input dataset") # "hyperred_hyperrelation" !!
+    parser.add_argument("--nary_schema",  default="event", type=str) # "hypergraph", ("role", "hyperrelation", "event") !
+    parser.add_argument("--data_dir", default='datasets/hyperace05_processed_data/hyperace05_event', type=str, 
+                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # "datasets/hyperred_processed_data/hyperred_hyperrelation" !!!
+    parser.add_argument("--output_dir", default="hyperace05re_models/hyperace05re_event-bert-42", type=str, 
+                        help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre_hyperrelation-bert-42" !!!!!
+##################################################################################################    
+    # basic settings for debug
+    parser.add_argument("--num_train_epochs", default=1.0, type=float,
+                        help="Total number of training epochs to perform.") # hyperred: 10.0, hyperace05: 100.0
+    parser.add_argument('--save_steps', type=int, default=1000,
+                        help="Save checkpoint every X updates steps.") # 1000
+    parser.add_argument("--smallerdataset", default=False, type=bool) # False
+##################################################################################################
+    # select-train/test
+    parser.add_argument("--do_train", action='store_true',default=True,
+                        help="Whether to run training.") # True/False
+    parser.add_argument("--do_eval", action='store_true',default=True,
+                        help="Whether to run eval on the dev set.") #True
+##################################################################################################
+    # select-bertbase/bertlarge
     parser.add_argument("--model_type", default="bertsub", type=str, 
-                        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
+                        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys())) # "bertsub"
     parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
-                        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
-    parser.add_argument("--output_dir", default="hyperace05re_models/hyperace05re_hyperrelation-bert-42", type=str, 
-                        help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre-bert-42"
+                        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS)) # "bert_models/bert-base-uncased"
+##################################################################################################
+    # important params
+    parser.add_argument('--alpha', default=0.2, type=float) #0.5,0.4,0.3,0.2,0.1
+    parser.add_argument('--q_alpha', default=0.2, type=float) #0.5,0.4,0.3,0.2,0.1
+###################################################################################################
 
     ## Other parameters
+    parser.add_argument("--sameentity", default=False, type=bool)#################  hyperred: False, hyperace05: True
     parser.add_argument("--config_name", default="", type=str,
                         help="Pretrained config name or path if not the same as model_name")
     parser.add_argument("--tokenizer_name", default="", type=str,
@@ -2207,10 +2501,6 @@ def main():
     parser.add_argument("--max_seq_length", default=256, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer "
                              "than this will be truncated, sequences shorter will be padded.")
-    parser.add_argument("--do_train", action='store_true',default=True,
-                        help="Whether to run training.")
-    parser.add_argument("--do_eval", action='store_true',default=True,
-                        help="Whether to run eval on the dev set.")
 
     parser.add_argument("--evaluate_during_training", action='store_true',default=True,
                         help="Rul evaluation during training at each logging step.")
@@ -2231,8 +2521,7 @@ def main():
                         help="Epsilon for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm.")
-    parser.add_argument("--num_train_epochs", default=10.0, type=float,
-                        help="Total number of training epochs to perform.")
+
     parser.add_argument("--max_steps", default=-1, type=int,
                         help="If > 0: set total number of training steps to perform. Override num_train_epochs.")
     parser.add_argument("--warmup_steps", default=-1, type=int,
@@ -2240,8 +2529,6 @@ def main():
 
     parser.add_argument('--logging_steps', type=int, default=5,
                         help="Log every X updates steps.")
-    parser.add_argument('--save_steps', type=int, default=1000,
-                        help="Save checkpoint every X updates steps.")# 5000
     parser.add_argument("--eval_all_checkpoints", action='store_true',default=True,
                         help="Evaluate all checkpoints starting with the same prefix as model_name ending and ending with step number")
     parser.add_argument("--no_cuda", action='store_true',
@@ -2271,8 +2558,7 @@ def main():
     parser.add_argument("--label_file",  default="label.json", type=str)
     
     parser.add_argument('--max_pair_length', type=int, default=32,  help="")
-    parser.add_argument("--alpha", default=0.2, type=float)#1.0
-    parser.add_argument("--q_alpha", default=0.2, type=float)#1.0      
+
     parser.add_argument('--save_results', action='store_true')
     parser.add_argument('--no_test', action='store_true')
     parser.add_argument('--eval_logsoftmax', action='store_true',default=True)

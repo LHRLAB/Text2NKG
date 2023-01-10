@@ -130,7 +130,7 @@ dmypy.json
 
 # new ignore
 *_models/
-datasets/
+#datasets/
 logs/
 apex/
 result*
