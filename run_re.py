@@ -2471,7 +2471,6 @@ def main():
     # basic settings for debug
     parser.add_argument("--cuda_device", default="1", type=str) # "0"
     parser.add_argument("--num_train_epochs", default=10.0, type=float) # hyperred: 10.0, hyperace05: 100.0
-    parser.add_argument('--save_steps', type=int, default=1000) # 1000
 ##################################################################################################
     # select-train/test
     parser.add_argument("--do_train", action='store_true',default=True,
@@ -2501,6 +2500,7 @@ def main():
 ###################################################################################################
     
     ## Other parameters
+    parser.add_argument('--save_steps', type=int, default=1000) # 1000
     parser.add_argument("--smallerdataset", default=False, type=bool) # False
     parser.add_argument("--sameentity", default=False, type=bool)
     parser.add_argument("--config_name", default="", type=str,
