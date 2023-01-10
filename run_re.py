@@ -21,7 +21,7 @@ import argparse
 import glob
 import logging
 import os
-os.environ['CUDA_VISIBLE_DEVICES']="1"
+
 import random
 from collections import defaultdict
 import re
@@ -1700,7 +1700,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
                     for item in event_output_preds:
                         if item not in temp:
                             temp.append(item)
-                    event_output_preds=item
+                    event_output_preds=temp
                     tot_event_output_results[example_index[0]].append((example_index[1],  event_output_preds))
 
                 # refine NER results
@@ -2222,7 +2222,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     evalTime = timeit.default_timer() - start_time
     logger.info("  Evaluation done in total %f secs (%f example per second)", evalTime,  len(global_predicted_ners) / evalTime)
     
-    output_w = open(os.path.join(args.output_dir, 'pred_results.json'), 'w')
+    # output_w = open(os.path.join(args.output_dir, 'pred_results.json'), 'w')
 
     if do_test:
         output_w = open(os.path.join(args.output_dir, 'test_pred_results.json'), 'w')
@@ -2240,7 +2240,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
             output_w.close()         
         if args.nary_schema == "event":
             output_ew = open(os.path.join(args.output_dir, 'event_pred_results.json'), 'w')
-            json.dump(tot_output_results, output_ew)
+            json.dump(tot_event_output_results, output_ew)
     else:
         output_w = open(os.path.join(args.output_dir, 'valid_pred_results.json'), 'w')
         json.dump(tot_output_results, output_w)
@@ -2462,42 +2462,52 @@ def main():
     parser = argparse.ArgumentParser()
 ##################################################################################################
     ## Required parameters
-    # dataset/naryschema-select
-    parser.add_argument("--dataset", default='hyperace05_event', type=str, help="The input dataset") # "hyperred_hyperrelation" !!
-    parser.add_argument("--nary_schema",  default="event", type=str) # "hypergraph", ("role", "hyperrelation", "event") !
-    parser.add_argument("--data_dir", default='datasets/hyperace05_processed_data/hyperace05_event', type=str, 
-                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # "datasets/hyperred_processed_data/hyperred_hyperrelation" !!!
-    parser.add_argument("--output_dir", default="hyperace05re_models/hyperace05re_event-bert-42", type=str, 
-                        help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre_hyperrelation-bert-42" !!!!!
-    parser.add_argument('--seed', type=int, default=42,
-                        help="random seed for initialization") # 42,43,44,45,46
+    # selec-dataset/naryschema !/.
+    parser.add_argument("--dataset", default='hyperace05_hypergraph', type=str, help="The input dataset") # "hyperred_hyperrelation" !.
+    parser.add_argument("--nary_schema",  default="hypergraph", type=str) # "hypergraph", ("role", "hyperrelation", "event") .
+    parser.add_argument("--data_dir", default='datasets/hyperace05_processed_data/hyperace05_hypergraph', type=str, 
+                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # "datasets/hyperred_processed_data/hyperred_hyperrelation" !!.
+    parser.add_argument("--output_dir", default="hyperace05re_models/hyperace05re_hypergraph-bert-42", type=str, 
+                        help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre_hyperrelation-bert-42" !!.ms
 ##################################################################################################    
     # basic settings for debug
+    parser.add_argument("--cuda_device", default="1", type=str, 
+                        help="The input dataset") # "0"
     parser.add_argument("--num_train_epochs", default=1.0, type=float,
                         help="Total number of training epochs to perform.") # hyperred: 10.0, hyperace05: 100.0
-    parser.add_argument('--save_steps', type=int, default=1000,
+    parser.add_argument('--save_steps', type=int, default=500,
                         help="Save checkpoint every X updates steps.") # 1000
     parser.add_argument("--smallerdataset", default=False, type=bool) # False
 ##################################################################################################
     # select-train/test
-    parser.add_argument("--do_train", action='store_true',default=False,
+    parser.add_argument("--do_train", action='store_true',default=True,
                         help="Whether to run training.") # True/False
     parser.add_argument("--do_eval", action='store_true',default=True,
                         help="Whether to run eval on the dev set.") #True
 ##################################################################################################
-    # select-bertbase/bertlarge
+    # select-bertbase/bertlarge m
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys())) # "bertsub"
     parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS)) # "bert_models/bert-base-uncased"
 ##################################################################################################
-    # important params
+    # select-seed s
+    parser.add_argument('--seed', type=int, default=42,
+                        help="random seed for initialization") # 42,43,44,45,46
+##################################################################################################    
+    # select-(alpha,q_alpha) a
     parser.add_argument('--alpha', default=0.2, type=float) #0.5,0.4,0.3,0.2,0.1
     parser.add_argument('--q_alpha', default=0.2, type=float) #0.5,0.4,0.3,0.2,0.1
 ###################################################################################################
-
+    # select-bs/lr p
+    parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
+                        help="Batch size per GPU/CPU for training.") # 8    
+    parser.add_argument("--learning_rate", default=2e-5, type=float,
+                        help="The initial learning rate for Adam.") #2e-5
+###################################################################################################
+    
     ## Other parameters
-    parser.add_argument("--sameentity", default=False, type=bool)#################  hyperred: False, hyperace05: True
+    parser.add_argument("--sameentity", default=False, type=bool)
     parser.add_argument("--config_name", default="", type=str,
                         help="Pretrained config name or path if not the same as model_name")
     parser.add_argument("--tokenizer_name", default="", type=str,
@@ -2513,14 +2523,12 @@ def main():
     parser.add_argument("--do_lower_case", action="store_true", default=True,
                         help="Set this flag if you are using an uncased model.")
 
-    parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
-                        help="Batch size per GPU/CPU for training.")#8
+
     parser.add_argument("--per_gpu_eval_batch_size", default=1, type=int,
                         help="Batch size per GPU/CPU for evaluation.")#16
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument("--learning_rate", default=2e-5, type=float,
-                        help="The initial learning rate for Adam.")
+
     parser.add_argument("--weight_decay", default=0.0, type=float,
                         help="Weight deay if we apply some.")
     parser.add_argument("--adam_epsilon", default=1e-8, type=float,
@@ -2579,6 +2587,8 @@ def main():
 
     args = parser.parse_args()
     
+    
+    os.environ['CUDA_VISIBLE_DEVICES']=args.cuda_device
     # add new dataset labels for entity, relation and qualifier
     label_file = os.path.join(args.data_dir, args.label_file)
     if os.path.exists(label_file):
