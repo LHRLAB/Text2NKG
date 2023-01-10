@@ -38,8 +38,9 @@ python setup.py install
 cd ..
 ```
 
-### Download and preprocess the datasets
-Our experiments are based on two datasets: HyperRED and HyperACE05. Please find the links and pre-processing below:
+### Datasets
+Our experiments are based on two datasets: HyperRED and HyperACE05. 
+<!-- Please find the links and pre-processing below:
 * HyperRED : 
 ```
 python hyperred_data_process.py
@@ -80,7 +81,7 @@ The input data format for our models is JSONL. Each line of the input file conta
     ...
   ]
 }
-```
+``` -->
 <!-- 
 ### Trained Models
 We release our trained n-ary RE models on HyperRED and ACE datasets on [Google Drive](https://drive.google.com/drive/folders/1k_Nt_DeKRKIRd2sM766j538b1JhYm4-H?usp=sharing). 
