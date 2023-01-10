@@ -2463,21 +2463,15 @@ def main():
 ##################################################################################################
     ## Required parameters
     # selec-dataset/naryschema !/.
-    parser.add_argument("--dataset", default='hyperace05_hypergraph', type=str, help="The input dataset") # "hyperred_hyperrelation" !.
-    parser.add_argument("--nary_schema",  default="hypergraph", type=str) # "hypergraph", ("role", "hyperrelation", "event") .
-    parser.add_argument("--data_dir", default='datasets/hyperace05_processed_data/hyperace05_hypergraph', type=str, 
-                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.") # "datasets/hyperred_processed_data/hyperred_hyperrelation" !!.
-    parser.add_argument("--output_dir", default="hyperace05re_models/hyperace05re_hypergraph-bert-42", type=str, 
-                        help="The output directory where the model predictions and checkpoints will be written.") # "hyperredre_models/hyperredre_hyperrelation-bert-42" !!.ms
+    parser.add_argument("--dataset", default='hyperred_hyperrelation', type=str) # "hyperred_hyperrelation" !.
+    parser.add_argument("--nary_schema",  default="hyperrelation", type=str) # "hyperrelation",("event", "role", "hypergraph") .
+    parser.add_argument("--data_dir", default='datasets/hyperred_processed_data/hyperred_hyperrelation', type=str) # "datasets/hyperred_processed_data/hyperred_hyperrelation" !!.
+    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bert-42", type=str) # "hyperredre_models/hyperredre_hyperrelation-bert-42" !!.ms
 ##################################################################################################    
     # basic settings for debug
-    parser.add_argument("--cuda_device", default="1", type=str, 
-                        help="The input dataset") # "0"
-    parser.add_argument("--num_train_epochs", default=1.0, type=float,
-                        help="Total number of training epochs to perform.") # hyperred: 10.0, hyperace05: 100.0
-    parser.add_argument('--save_steps', type=int, default=500,
-                        help="Save checkpoint every X updates steps.") # 1000
-    parser.add_argument("--smallerdataset", default=False, type=bool) # False
+    parser.add_argument("--cuda_device", default="1", type=str) # "0"
+    parser.add_argument("--num_train_epochs", default=10.0, type=float) # hyperred: 10.0, hyperace05: 100.0
+    parser.add_argument('--save_steps', type=int, default=1000) # 1000
 ##################################################################################################
     # select-train/test
     parser.add_argument("--do_train", action='store_true',default=True,
@@ -2507,6 +2501,7 @@ def main():
 ###################################################################################################
     
     ## Other parameters
+    parser.add_argument("--smallerdataset", default=False, type=bool) # False
     parser.add_argument("--sameentity", default=False, type=bool)
     parser.add_argument("--config_name", default="", type=str,
                         help="Pretrained config name or path if not the same as model_name")
