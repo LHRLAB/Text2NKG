@@ -105,7 +105,7 @@ class ACEDataset(Dataset):
 
         self.evaluate = evaluate
         self.use_typemarker = args.use_typemarker
-        self.local_rank = args.local_rank
+        self.cuda_device = args.cuda_device
         self.args = args
         self.model_type = args.model_type
         self.no_sym = args.no_sym
@@ -881,14 +881,14 @@ def _rotate_checkpoints(args, checkpoint_prefix, use_mtime=False):
 
 def train(args, model, tokenizer):
     """ Train the model """
-    if args.local_rank in [-1, 0]:
+    if len(args.cuda_device) > 1:
         tb_writer = SummaryWriter("logs/"+args.data_dir[max(args.data_dir.rfind('/'),0):]+"_re_logs/"+args.output_dir[args.output_dir.rfind('/'):])
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
 
     train_dataset = ACEDataset(tokenizer=tokenizer, args=args, max_pair_length=args.max_pair_length)
 
-    train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
+    train_sampler = RandomSampler(train_dataset) if len(args.cuda_device) > 1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size, num_workers=4*int(args.output_dir.find('test')==-1))
     # count total training step
     if args.max_steps > 0:
@@ -923,12 +923,15 @@ def train(args, model, tokenizer):
     # ori_model = model
     # multi-gpu training (should be after apex fp16 initialization)
     if args.n_gpu > 1:
-        model = torch.nn.DataParallel(model)
+        devices = []
+        for i in range(len(args.cuda_device)):
+            devices.append(torch.device(f"cuda:{args.cuda_device[i]}"))
+        model = torch.nn.DataParallel(model, device_ids=devices)
 
     # Distributed training (should be after apex fp16 initialization)
-    if args.local_rank != -1:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank],
-                                                          output_device=args.local_rank,
+    if len(args.cuda_device) == 1:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[int(args.cuda_device)],
+                                                          output_device=int(args.cuda_device),
                                                           find_unused_parameters=True)
 
     # Train!
@@ -937,7 +940,7 @@ def train(args, model, tokenizer):
     logger.info("  Num Epochs = %d", args.num_train_epochs)
     logger.info("  Instantaneous batch size per GPU = %d", args.per_gpu_train_batch_size)
     logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d",
-                   args.train_batch_size * args.gradient_accumulation_steps * (torch.distributed.get_world_size() if args.local_rank != -1 else 1))
+                   args.train_batch_size * args.gradient_accumulation_steps * (torch.distributed.get_world_size() if len(args.cuda_device) == 1 else 1))
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
 
@@ -949,7 +952,7 @@ def train(args, model, tokenizer):
     tr_q_re_loss, logging_q_re_loss = 0.0, 0.0
 
     model.zero_grad()
-    train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0])
+    train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=not len(args.cuda_device) > 0)
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     best_f1 = -1
 
@@ -961,7 +964,7 @@ def train(args, model, tokenizer):
         epoch+=1
         if args.shuffle and _ > 0:
             train_dataset.initialize()
-        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=not len(args.cuda_device) > 0)
         for step, batch in enumerate(epoch_iterator): 
 
             model.train()
@@ -997,6 +1000,9 @@ def train(args, model, tokenizer):
 
             if args.n_gpu > 1:
                 loss = loss.mean() # mean() to average on multi-gpu parallel training
+                re_loss = re_loss.mean()
+                ner_loss = ner_loss.mean()
+                q_re_loss = q_re_loss.mean()
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
                 re_loss = re_loss / args.gradient_accumulation_steps
@@ -1036,7 +1042,7 @@ def train(args, model, tokenizer):
                 # if args.model_type.endswith('rel') :
                 #     ori_model.bert.encoder.layer[args.add_coref_layer].attention.self.relative_attention_bias.weight.data[0].zero_() # 可以手动乘个mask
 
-                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
+                if len(args.cuda_device) > 1 and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # Log metrics
                     tb_writer.add_scalar('lr', scheduler.get_lr()[0], global_step)
                     tb_writer.add_scalar('loss', (tr_loss - logging_loss)/args.logging_steps, global_step)
@@ -1055,7 +1061,7 @@ def train(args, model, tokenizer):
                     # logging_q_ner_loss = tr_q_ner_loss
 
 
-                if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0: # valid for bert/spanbert   #   
+                if len(args.cuda_device) > 1 and args.save_steps > 0 and global_step % args.save_steps == 0: # valid for bert/spanbert   #   
                     update = True
                     # Save model checkpoint
                     if args.evaluate_during_training:  # Only evaluate when single GPU otherwise metrics may not average well
@@ -1100,7 +1106,7 @@ def train(args, model, tokenizer):
             train_iterator.close()
             break
 
-    if args.local_rank in [-1, 0]:
+    if len(args.cuda_device) > 1:
         tb_writer.close()
 
 
@@ -1125,7 +1131,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     q_label_list = list(eval_dataset.q_label_list)
     q_tot_recall = eval_dataset.q_tot_recall
 
-    if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
+    if not os.path.exists(eval_output_dir) and len(args.cuda_device) > 1:
         os.makedirs(eval_output_dir)
 
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
@@ -2478,21 +2484,21 @@ def main():
     # 6."datasets/hyperace05_processed_data/hyperace05_event"
     # 7."datasets/hyperace05_processed_data/hyperace05_role"
     # 8."datasets/hyperace05_processed_data/hyperace05_hypergraph"
-    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bert-42", type=str) 
-    # 1."hyperredre_models/hyperredre_hyperrelation-bert-42"
-    # 2."hyperredre_models/hyperredre_event-bert-42"
-    # 3."hyperredre_models/hyperredre_role-bert-42"
-    # 4."hyperredre_models/hyperredre_hypergraph-bert-42"
-    # 5."hyperace05re_models/hyperace05re_hyperrelation-bert-42"
-    # 6."hyperace05re_models/hyperace05re_event-bert-42"
-    # 7."hyperace05re_models/hyperace05re_role-bert-42"
-    # 8."hyperace05re_models/hyperace05re_hypergraph-bert-42"
+    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bertlarge-42", type=str) 
+    # 1."hyperredre_models/hyperredre_hyperrelation-bertlarge-42"
+    # 2."hyperredre_models/hyperredre_event-bertlarge-42"
+    # 3."hyperredre_models/hyperredre_role-bertlarge-42"
+    # 4."hyperredre_models/hyperredre_hypergraph-bertlarge-42"
+    # 5."hyperace05re_models/hyperace05re_hyperrelation-bertlarge-42"
+    # 6."hyperace05re_models/hyperace05re_event-bertlarge-42"
+    # 7."hyperace05re_models/hyperace05re_role-bertlarge-42"
+    # 8."hyperace05re_models/hyperace05re_hypergraph-bertlarge-42"
     parser.add_argument("--num_train_epochs", default=10.0, type=float) 
     # (hyperred) 1,2,3,4:  10.0 
     # (hyperace05) 5,6,7,8:  100.0
 ##################################################################################################    
     # select-cuda
-    parser.add_argument("--cuda_device", default="1", type=str) # "0"
+    parser.add_argument("--cuda_device", default="0123", type=str) # "0"
 ##################################################################################################
     # select-train/test
     parser.add_argument("--do_train", action='store_true',default=True,
@@ -2515,7 +2521,7 @@ def main():
     parser.add_argument('--q_alpha', default=0.2, type=float) #0.5,0.4,0.3,0.2,0.1
 ###################################################################################################
     # select-bs/lr p
-    parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
+    parser.add_argument("--per_gpu_train_batch_size", default=2, type=int,
                         help="Batch size per GPU/CPU for training.") # 8    
     parser.add_argument("--learning_rate", default=2e-5, type=float,
                         help="The initial learning rate for Adam.") #2e-5
@@ -2575,8 +2581,8 @@ def main():
     parser.add_argument('--fp16_opt_level', type=str, default='O1',
                         help="For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
                              "See details at https://nvidia.github.io/apex/amp.html")
-    parser.add_argument("--local_rank", type=int, default=-1,
-                        help="For distributed training: local_rank")
+    '''parser.add_argument("--local_rank", type=int, default=-1,
+                        help="For distributed training: local_rank")'''
     parser.add_argument('--server_ip', type=str, default='', help="For distant debugging.")
     parser.add_argument('--server_port', type=str, default='', help="For distant debugging.")
     parser.add_argument('--save_total_limit', type=int, default=1,
@@ -2605,7 +2611,8 @@ def main():
     args = parser.parse_args()
     
     
-    os.environ['CUDA_VISIBLE_DEVICES']=args.cuda_device
+    
+    # os.environ['CUDA_VISIBLE_DEVICES']=args.cuda_device
     # add new dataset labels for entity, relation and qualifier
     label_file = os.path.join(args.data_dir, args.label_file)
     if os.path.exists(label_file):
@@ -2635,26 +2642,43 @@ def main():
             for script in scripts_to_save:
                 dst_file = os.path.join(path, 'scripts', os.path.basename(script))
                 shutil.copyfile(script, dst_file)
-    if args.do_train and args.local_rank in [-1, 0] and args.output_dir.find('test')==-1:
+    if args.do_train and len(args.cuda_device) > 1 and args.output_dir.find('test')==-1:
         create_exp_dir(args.output_dir, scripts_to_save=['run_re.py', 'transformers/src/transformers/modeling_bert.py', 'transformers/src/transformers/modeling_albert.py'])
 
     # Setup CUDA, GPU & distributed training
-    if args.local_rank == -1 or args.no_cuda:
+    '''if args.local_rank == -1 or args.no_cuda:
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
         args.n_gpu = torch.cuda.device_count()
     else:  # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
         torch.distributed.init_process_group(backend='nccl')
+        args.n_gpu = 1'''
+    # the nunber of cuda is more than 1
+    if len(args.cuda_device) > 1 or args.no_cuda:
+        device = ','.join(args.cuda_device)
+        os.environ['CUDA_VISIBLE_DEVICES'] = device
+        device = torch.device("cuda:" + device[0] if torch.cuda.is_available() and not args.no_cuda else "cpu")
+        args.n_gpu = len(args.cuda_device)
+    else:  # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
+        torch.cuda.set_device(int(args.cuda_device))
+        os.environ['RANK'] = '0'
+        os.environ['WORLD_SIZE'] = '1'
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = '5678'
+        device = torch.device("cuda", int(args.cuda_device))
+        torch.distributed.init_process_group(backend='nccl')
         args.n_gpu = 1
-    args.device = device
+    args.device = device 
+        
+    # args.device = device
 
     # Setup logging
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                         datefmt = '%m/%d/%Y %H:%M:%S',
-                        level = logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
-    logger.warning("Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
-                    args.local_rank, device, args.n_gpu, bool(args.local_rank != -1), args.fp16)
+                        level = logging.INFO if len(args.cuda_device) > 1 else logging.WARN)
+    logger.warning("device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
+                    device, args.n_gpu, bool(len(args.cuda_device) > 1), args.fp16)
 
     # Set seed
     set_seed(args)
@@ -2669,7 +2693,7 @@ def main():
         num_q_labels = len(set(task_q_labels[args.dataset]))+1
 
     # Load pretrained model and tokenizer
-    if args.local_rank not in [-1, 0]:
+    if len(args.cuda_device) == 1:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
     args.model_type = args.model_type.lower()
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
@@ -2733,7 +2757,7 @@ def main():
             word_embeddings[objs].copy_(word_embeddings[mask_id])      
             word_embeddings[obje].copy_(word_embeddings[object_id])     
 
-    if args.local_rank == 0:
+    if args.no_cuda or not torch.cuda.is_available():
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
     model.to(args.device)
@@ -2747,9 +2771,9 @@ def main():
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
-    if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+    if args.do_train and (len(args.cuda_device) > 1 or torch.distributed.get_rank() == 0):
         # Create output directory if needed
-        if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
+        if not os.path.exists(args.output_dir) and len(args.cuda_device) > 1:
             os.makedirs(args.output_dir)
         update = True
         if args.evaluate_during_training:
@@ -2781,7 +2805,7 @@ def main():
 
     # Evaluation
     results = {'dev_best_f1': best_f1}
-    if args.do_eval and args.local_rank in [-1, 0]:
+    if args.do_eval and len(args.cuda_device) > 1:
 
         checkpoints = [args.output_dir]
 
