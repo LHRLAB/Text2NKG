@@ -882,14 +882,14 @@ def _rotate_checkpoints(args, checkpoint_prefix, use_mtime=False):
 
 def train(args, model, tokenizer):
     """ Train the model """
-    if len(args.cuda_device) > 1:
+    if len(args.cuda_device) > 0:
         tb_writer = SummaryWriter("logs/"+args.data_dir[max(args.data_dir.rfind('/'),0):]+"_re_logs/"+args.output_dir[args.output_dir.rfind('/'):])
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
 
     train_dataset = ACEDataset(tokenizer=tokenizer, args=args, max_pair_length=args.max_pair_length)
 
-    train_sampler = RandomSampler(train_dataset) if len(args.cuda_device) > 1 else DistributedSampler(train_dataset)
+    train_sampler = RandomSampler(train_dataset) if len(args.cuda_device) > 0 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size, num_workers=4*int(args.output_dir.find('test')==-1))
     # count total training step
     if args.max_steps > 0:
@@ -923,17 +923,17 @@ def train(args, model, tokenizer):
         model, optimizer = amp.initialize(model, optimizer, opt_level=args.fp16_opt_level)
     # ori_model = model
     # multi-gpu training (should be after apex fp16 initialization)
-    if args.n_gpu > 1:
+    if args.n_gpu > 0:
         devices = []
         for i in range(len(args.cuda_device)):
             devices.append(torch.device(f"cuda:{args.cuda_device[i]}"))
         model = torch.nn.DataParallel(model, device_ids=devices)
 
     # Distributed training (should be after apex fp16 initialization)
-    if len(args.cuda_device) == 1:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[int(args.cuda_device)],
-                                                          output_device=int(args.cuda_device),
-                                                          find_unused_parameters=True)
+    # if len(args.cuda_device) == 1:
+    #     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[int(args.cuda_device)],
+    #                                                       output_device=int(args.cuda_device),
+    #                                                       find_unused_parameters=True)
 
     # Train!
     logger.info("***** Running training *****")
@@ -941,7 +941,7 @@ def train(args, model, tokenizer):
     logger.info("  Num Epochs = %d", args.num_train_epochs)
     logger.info("  Instantaneous batch size per GPU = %d", args.per_gpu_train_batch_size)
     logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d",
-                   args.train_batch_size * args.gradient_accumulation_steps * (torch.distributed.get_world_size() if len(args.cuda_device) == 1 else 1))
+                   args.train_batch_size * args.gradient_accumulation_steps)
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
 
@@ -1043,7 +1043,7 @@ def train(args, model, tokenizer):
                 # if args.model_type.endswith('rel') :
                 #     ori_model.bert.encoder.layer[args.add_coref_layer].attention.self.relative_attention_bias.weight.data[0].zero_() # 可以手动乘个mask
 
-                if len(args.cuda_device) > 1 and args.logging_steps > 0 and global_step % args.logging_steps == 0:
+                if len(args.cuda_device) > 0 and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # Log metrics
                     tb_writer.add_scalar('lr', scheduler.get_lr()[0], global_step)
                     tb_writer.add_scalar('loss', (tr_loss - logging_loss)/args.logging_steps, global_step)
@@ -1062,7 +1062,7 @@ def train(args, model, tokenizer):
                     # logging_q_ner_loss = tr_q_ner_loss
 
 
-                if len(args.cuda_device) > 1 and args.save_steps > 0 and global_step % args.save_steps == 0: # valid for bert/spanbert   #   
+                if len(args.cuda_device) > 0 and args.save_steps > 0 and global_step % args.save_steps == 0: # valid for bert/spanbert   #   
                     update = True
                     # Save model checkpoint
                     if args.evaluate_during_training:  # Only evaluate when single GPU otherwise metrics may not average well
@@ -1104,7 +1104,7 @@ def train(args, model, tokenizer):
                         if args.test_when_update:
                             # Evaluation
                             results = {'dev_best_f1': best_f1}
-                            if args.do_eval and len(args.cuda_device) > 1:
+                            if args.do_eval and len(args.cuda_device) > 0:
 
                                 checkpoints = [args.output_dir]
 
@@ -1140,7 +1140,7 @@ def train(args, model, tokenizer):
             train_iterator.close()
             break
 
-    if len(args.cuda_device) > 1:
+    if len(args.cuda_device) > 0:
         tb_writer.close()
 
 
@@ -1165,7 +1165,7 @@ def evaluate(args, model, tokenizer, prefix="", do_test=False):
     q_label_list = list(eval_dataset.q_label_list)
     q_tot_recall = eval_dataset.q_tot_recall
 
-    if not os.path.exists(eval_output_dir) and len(args.cuda_device) > 1:
+    if not os.path.exists(eval_output_dir) and len(args.cuda_device) > 0:
         os.makedirs(eval_output_dir)
 
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
@@ -2511,6 +2511,15 @@ def main():
     # 1."hyperrelation", 2."event" 3."role" 4."hypergraph"
     # 5."hyperrelation", 6."event" 7."role" 8."hypergraph"
     parser.add_argument("--data_dir", default='datasets/hyperred_processed_data/hyperred_hyperrelation', type=str) 
+    # 1."datasets/hyperred_processed_data/hyperred_hyperrelation"
+    # 2."datasets/hyperred_processed_data/hyperred_event"
+    # 3."datasets/hyperred_processed_data/hyperred_role"
+    # 4."datasets/hyperred_processed_data/hyperred_hypergraph"
+    # 5."datasets/hyperace05_processed_data/hyperace05_hyperrelation"
+    # 6."datasets/hyperace05_processed_data/hyperace05_event"
+    # 7."datasets/hyperace05_processed_data/hyperace05_role"
+    # 8."datasets/hyperace05_processed_data/hyperace05_hypergraph"
+    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bertlarge-42", type=str) 
     # 1."hyperredre_models/hyperredre_hyperrelation-bert-42", "hyperredre_models/hyperredre_hyperrelation-bertlarge-42"
     # 2."hyperredre_models/hyperredre_event-bert-42", "hyperredre_models/hyperredre_event-bertlarge-42"
     # 3."hyperredre_models/hyperredre_role-bert-42", "hyperredre_models/hyperredre_role-bertlarge-42"
@@ -2519,21 +2528,12 @@ def main():
     # 6."hyperace05re_models/hyperace05re_event-bert-42", "hyperace05re_models/hyperace05re_event-bertlarge-42"
     # 7."hyperace05re_models/hyperace05re_role-bert-42", "hyperace05re_models/hyperace05re_role-bertlarge-42"
     # 8."hyperace05re_models/hyperace05re_hypergraph-bert-42", "hyperace05re_models/hyperace05re_hypergraph-bertlarge-42"
-    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bert-42", type=str) 
-    # 1."hyperredre_models/hyperredre_hyperrelation-bert-42"
-    # 2."hyperredre_models/hyperredre_event-bert-42"
-    # 3."hyperredre_models/hyperredre_role-bert-42"
-    # 4."hyperredre_models/hyperredre_hypergraph-bert-42"
-    # 5."hyperace05re_models/hyperace05re_hyperrelation-bert-42"
-    # 6."hyperace05re_models/hyperace05re_event-bert-42"
-    # 7."hyperace05re_models/hyperace05re_role-bert-42"
-    # 8."hyperace05re_models/hyperace05re_hypergraph-bert-42"
-    parser.add_argument("--num_train_epochs", default=10.0, type=float) 
+    parser.add_argument("--num_train_epochs", default=1.0, type=float) 
     # (hyperred) 1,2,3,4:  10.0 
     # (hyperace05) 5,6,7,8:  100.0
 ##################################################################################################    
     # select-cuda
-    parser.add_argument("--cuda_device", default="0", type=str) # "0"(single-gpu), "0123"(multi-gpu)
+    parser.add_argument("--cuda_device", default="0123", type=str) # "0"(single-gpu), "0123"(multi-gpu)
 ##################################################################################################
     # select-train/test
     parser.add_argument('--test_when_update', type=bool, default=True) # True, don't change
@@ -2545,7 +2545,7 @@ def main():
     # select-bertbase/bertlarge m
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys())) # "bertsub"
-    parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
+    parser.add_argument("--model_name_or_path", default="bert_models/bert-large-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS)) # "bert_models/bert-base-uncased", "bert_models/bert-large-uncased"
 ##################################################################################################
     # select-seed s
@@ -2564,8 +2564,8 @@ def main():
 ###################################################################################################
     
     ## Other parameters
-    parser.add_argument('--save_steps', type=int, default=1000) # 1000
-    parser.add_argument("--smallerdataset", default=False, type=bool) # False
+    parser.add_argument('--save_steps', type=int, default=10) # 1000
+    parser.add_argument("--smallerdataset", default=True, type=bool) # False
     parser.add_argument("--sameentity", default=False, type=bool)
     parser.add_argument("--config_name", default="", type=str,
                         help="Pretrained config name or path if not the same as model_name")
@@ -2677,7 +2677,7 @@ def main():
             for script in scripts_to_save:
                 dst_file = os.path.join(path, 'scripts', os.path.basename(script))
                 shutil.copyfile(script, dst_file)
-    if args.do_train and len(args.cuda_device) > 1 and args.output_dir.find('test')==-1:
+    if args.do_train and len(args.cuda_device) > 0 and args.output_dir.find('test')==-1:
         create_exp_dir(args.output_dir, scripts_to_save=['run_re.py', 'transformers/src/transformers/modeling_bert.py', 'transformers/src/transformers/modeling_albert.py'])
 
     # Setup CUDA, GPU & distributed training
@@ -2690,7 +2690,7 @@ def main():
         torch.distributed.init_process_group(backend='nccl')
         args.n_gpu = 1'''
         
-    if len(args.cuda_device) > 1 or args.no_cuda:
+    if len(args.cuda_device) > 0 or args.no_cuda:
         device = ','.join(args.cuda_device)
         os.environ['CUDA_VISIBLE_DEVICES'] = device
         device = torch.device("cuda:" + device[0] if torch.cuda.is_available() and not args.no_cuda else "cpu")
@@ -2709,9 +2709,9 @@ def main():
     # Setup logging
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                         datefmt = '%m/%d/%Y %H:%M:%S',
-                        level = logging.INFO if len(args.cuda_device) > 1 else logging.WARN)
+                        level = logging.INFO if len(args.cuda_device) > 0 else logging.WARN)
     logger.warning("device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
-                    device, args.n_gpu, bool(not len(args.cuda_device) > 1), args.fp16)
+                    device, args.n_gpu, bool(not len(args.cuda_device) > 0), args.fp16)
 
     # Set seed
     set_seed(args)
@@ -2726,8 +2726,8 @@ def main():
         num_q_labels = len(set(task_q_labels[args.dataset]))+1
 
     # Load pretrained model and tokenizer
-    if len(args.cuda_device) == 1:
-        torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
+    # if len(args.cuda_device) == 1:
+    #     torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
     args.model_type = args.model_type.lower()
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     
@@ -2804,9 +2804,9 @@ def main():
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
-    if args.do_train and (len(args.cuda_device) > 1 or torch.distributed.get_rank() == 0):
+    if args.do_train and (len(args.cuda_device) > 0 or torch.distributed.get_rank() == 0):
         # Create output directory if needed
-        if not os.path.exists(args.output_dir) and len(args.cuda_device) > 1:
+        if not os.path.exists(args.output_dir) and len(args.cuda_device) > 0:
             os.makedirs(args.output_dir)
         update = True
         if args.evaluate_during_training:
@@ -2838,7 +2838,7 @@ def main():
 
     # Evaluation
     results = {'dev_best_f1': best_f1}
-    if args.do_eval and len(args.cuda_device) > 1:
+    if args.do_eval and len(args.cuda_device) > 0:
 
         checkpoints = [args.output_dir]
 
