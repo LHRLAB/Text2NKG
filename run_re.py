@@ -16,7 +16,7 @@
 """ Finetuning the library models for sequence classification on GLUE (Bert, XLM, XLNet, RoBERTa)."""
 
 from __future__ import absolute_import, division, print_function
-
+from apex import amp
 import argparse
 import glob
 import logging
