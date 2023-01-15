@@ -2520,20 +2520,20 @@ def main():
     # 7."datasets/hyperace05_processed_data/hyperace05_role"
     # 8."datasets/hyperace05_processed_data/hyperace05_hypergraph"
     parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bert-42", type=str) 
-    # 1."hyperredre_models/hyperredre_hyperrelation-bert-42", "hyperredre_models/hyperredre_hyperrelation-bertlarge-42"
-    # 2."hyperredre_models/hyperredre_event-bert-42", "hyperredre_models/hyperredre_event-bertlarge-42"
-    # 3."hyperredre_models/hyperredre_role-bert-42", "hyperredre_models/hyperredre_role-bertlarge-42"
-    # 4."hyperredre_models/hyperredre_hypergraph-bert-42", "hyperredre_models/hyperredre_hypergraph-bertlarge-42"
-    # 5."hyperace05re_models/hyperace05re_hyperrelation-bert-42", "hyperace05re_models/hyperace05re_hyperrelation-bertlarge-42"
-    # 6."hyperace05re_models/hyperace05re_event-bert-42", "hyperace05re_models/hyperace05re_event-bertlarge-42"
-    # 7."hyperace05re_models/hyperace05re_role-bert-42", "hyperace05re_models/hyperace05re_role-bertlarge-42"
-    # 8."hyperace05re_models/hyperace05re_hypergraph-bert-42", "hyperace05re_models/hyperace05re_hypergraph-bertlarge-42"
+    # 1."hyperredre_models/hyperredre_hyperrelation-bert-42",       !!!! "hyperredre_models/hyperredre_hyperrelation-bertlarge-42"
+    # 2."hyperredre_models/hyperredre_event-bert-42",               !!!! "hyperredre_models/hyperredre_event-bertlarge-42"
+    # 3."hyperredre_models/hyperredre_role-bert-42",                !!!! "hyperredre_models/hyperredre_role-bertlarge-42"
+    # 4."hyperredre_models/hyperredre_hypergraph-bert-42",          !!!! "hyperredre_models/hyperredre_hypergraph-bertlarge-42"
+    # 5."hyperace05re_models/hyperace05re_hyperrelation-bert-42",   !!!! "hyperace05re_models/hyperace05re_hyperrelation-bertlarge-42"
+    # 6."hyperace05re_models/hyperace05re_event-bert-42",           !!!! "hyperace05re_models/hyperace05re_event-bertlarge-42"
+    # 7."hyperace05re_models/hyperace05re_role-bert-42",            !!!! "hyperace05re_models/hyperace05re_role-bertlarge-42"
+    # 8."hyperace05re_models/hyperace05re_hypergraph-bert-42",      !!!! "hyperace05re_models/hyperace05re_hypergraph-bertlarge-42"
     parser.add_argument("--num_train_epochs", default=10.0, type=float) 
     # (hyperred) 1,2,3,4:  10.0 
     # (hyperace05) 5,6,7,8:  100.0
 ##################################################################################################    
     # select-cuda
-    parser.add_argument("--cuda_device", default="0", type=str) # "0"(single-gpu), "0123"(multi-gpu)
+    parser.add_argument("--cuda_device", default="0", type=str) # "0"(single-gpu),           !!!! "0123"(multi-gpu)
 ##################################################################################################
     # select-train/test
     parser.add_argument('--test_when_update', type=bool, default=True) # True, don't change
@@ -2546,7 +2546,7 @@ def main():
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys())) # "bertsub"
     parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
-                        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS)) # "bert_models/bert-base-uncased", "bert_models/bert-large-uncased"
+                        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS)) # "bert_models/bert-base-uncased",    !!!! "bert_models/bert-large-uncased"
 ##################################################################################################
     # select-seed s
     parser.add_argument('--seed', type=int, default=42,
@@ -2558,7 +2558,7 @@ def main():
 ###################################################################################################
     # select-bs/lr p
     parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
-                        help="Batch size per GPU/CPU for training.") # 8(single-gpu), 2(multi-gpu)
+                        help="Batch size per GPU/CPU for training.") # 8(single-gpu),           !!!! 2(multi-gpu)
     parser.add_argument("--learning_rate", default=2e-5, type=float,
                         help="The initial learning rate for Adam.") #2e-5
 ###################################################################################################
