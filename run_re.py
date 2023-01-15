@@ -2510,7 +2510,7 @@ def main():
     parser.add_argument("--nary_schema",  default="hyperrelation", type=str) 
     # 1."hyperrelation", 2."event" 3."role" 4."hypergraph"
     # 5."hyperrelation", 6."event" 7."role" 8."hypergraph"
-    parser.add_argument("--data_dir", default='datasets/hyperred_processed_data/hyperred_event', type=str) 
+    parser.add_argument("--data_dir", default='datasets/hyperred_processed_data/hyperred_hyperrelation', type=str) 
     # 1."datasets/hyperred_processed_data/hyperred_hyperrelation"
     # 2."datasets/hyperred_processed_data/hyperred_event"
     # 3."datasets/hyperred_processed_data/hyperred_role"
