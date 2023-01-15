@@ -2647,7 +2647,7 @@ def main():
     args = parser.parse_args()
     
     
-    os.environ['CUDA_VISIBLE_DEVICES']=args.cuda_device
+    # os.environ['CUDA_VISIBLE_DEVICES']=args.cuda_device
     # add new dataset labels for entity, relation and qualifier
     label_file = os.path.join(args.data_dir, args.label_file)
     if os.path.exists(label_file):
@@ -2692,7 +2692,7 @@ def main():
         
     if len(args.cuda_device) > 0 or args.no_cuda:
         device = ','.join(args.cuda_device)
-        os.environ['CUDA_VISIBLE_DEVICES'] = device
+        # os.environ['CUDA_VISIBLE_DEVICES'] = device
         device = torch.device("cuda:" + device[0] if torch.cuda.is_available() and not args.no_cuda else "cpu")
         args.n_gpu = len(args.cuda_device)
     else:  # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
