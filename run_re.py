@@ -2519,7 +2519,7 @@ def main():
     # 6."datasets/hyperace05_processed_data/hyperace05_event"
     # 7."datasets/hyperace05_processed_data/hyperace05_role"
     # 8."datasets/hyperace05_processed_data/hyperace05_hypergraph"
-    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bertlarge-42", type=str) 
+    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bert-42", type=str) 
     # 1."hyperredre_models/hyperredre_hyperrelation-bert-42", "hyperredre_models/hyperredre_hyperrelation-bertlarge-42"
     # 2."hyperredre_models/hyperredre_event-bert-42", "hyperredre_models/hyperredre_event-bertlarge-42"
     # 3."hyperredre_models/hyperredre_role-bert-42", "hyperredre_models/hyperredre_role-bertlarge-42"
@@ -2533,7 +2533,7 @@ def main():
     # (hyperace05) 5,6,7,8:  100.0
 ##################################################################################################    
     # select-cuda
-    parser.add_argument("--cuda_device", default="0123", type=str) # "0"(single-gpu), "0123"(multi-gpu)
+    parser.add_argument("--cuda_device", default="0", type=str) # "0"(single-gpu), "0123"(multi-gpu)
 ##################################################################################################
     # select-train/test
     parser.add_argument('--test_when_update', type=bool, default=True) # True, don't change
@@ -2545,7 +2545,7 @@ def main():
     # select-bertbase/bertlarge m
     parser.add_argument("--model_type", default="bertsub", type=str, 
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys())) # "bertsub"
-    parser.add_argument("--model_name_or_path", default="bert_models/bert-large-uncased", type=str, 
+    parser.add_argument("--model_name_or_path", default="bert_models/bert-base-uncased", type=str, 
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS)) # "bert_models/bert-base-uncased", "bert_models/bert-large-uncased"
 ##################################################################################################
     # select-seed s
@@ -2557,15 +2557,15 @@ def main():
     parser.add_argument('--q_alpha', default=0.01, type=float) # 1.0, 0.1, 0.01(best), 0.001, 0.0001
 ###################################################################################################
     # select-bs/lr p
-    parser.add_argument("--per_gpu_train_batch_size", default=2, type=int,
+    parser.add_argument("--per_gpu_train_batch_size", default=8, type=int,
                         help="Batch size per GPU/CPU for training.") # 8(single-gpu), 2(multi-gpu)
     parser.add_argument("--learning_rate", default=2e-5, type=float,
                         help="The initial learning rate for Adam.") #2e-5
 ###################################################################################################
     
     ## Other parameters
-    parser.add_argument('--save_steps', type=int, default=10) # 1000
-    parser.add_argument("--smallerdataset", default=True, type=bool) # False
+    parser.add_argument('--save_steps', type=int, default=1000) # 1000
+    parser.add_argument("--smallerdataset", default=False, type=bool) # False
     parser.add_argument("--sameentity", default=False, type=bool)
     parser.add_argument("--config_name", default="", type=str,
                         help="Pretrained config name or path if not the same as model_name")
