@@ -2,7 +2,7 @@
 Text2NKG：Sentence-level N-ary Relation Extraction for End-to-End N-ary relational Knowledge Graph Completion
 
 ## Overview
-![](./figs/overview.jpg)
+![](./figs/F1.drawio.png)
 
 <!-- In this work, we present a novel span representation approach, named Packed Levitated Markers,  to consider the dependencies between the spans (pairs) by strategically packing the markers in the encoder. Our approach is evaluated on two typical span (pair) representation tasks:
 
