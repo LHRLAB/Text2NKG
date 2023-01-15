@@ -105,6 +105,7 @@ class ACEDataset(Dataset):
 
         self.evaluate = evaluate
         self.use_typemarker = args.use_typemarker
+        self.local_rank = args.local_rank
         self.cuda_device = args.cuda_device
         self.args = args
         self.model_type = args.model_type
@@ -1098,6 +1099,39 @@ def train(args, model, tokenizer):
                         logger.info("Saving model checkpoint to %s", output_dir)
 
                         _rotate_checkpoints(args, checkpoint_prefix)
+                        
+                        ###############################################################
+                        if args.test_when_update:
+                            # Evaluation
+                            results = {'dev_best_f1': best_f1}
+                            if args.do_eval and len(args.cuda_device) > 1:
+
+                                checkpoints = [args.output_dir]
+
+                                WEIGHTS_NAME = 'pytorch_model.bin'
+
+                                if args.eval_all_checkpoints:
+                                    checkpoints = list(os.path.dirname(c) for c in sorted(glob.glob(args.output_dir + '/**/' + WEIGHTS_NAME, recursive=True)))
+
+                                logger.info("Evaluate the following checkpoints: %s", checkpoints)
+                                for checkpoint in checkpoints:
+                                    global_step_str = checkpoint.split('-')[-1] if len(checkpoints) > 1 else ""
+                                    result = evaluate(args, model, tokenizer, prefix=global_step_str, do_test=not args.no_test)
+                                    result = dict((k + '_{}'.format(global_step_str), v) for k, v in result.items())
+                                    results.update(result)
+                                print (results)
+
+                                if args.no_test:  # choose best resutls on dev set
+                                    bestv = 0
+                                    k = 0
+                                    for k, v in results.items():
+                                        if v > bestv:
+                                            bestk = k
+                                    print (bestk)
+
+                                output_eval_file = os.path.join(args.output_dir, "results.json")
+                                json.dump(results, open(output_eval_file, "w"))
+                            ##########################################################################3
 
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
@@ -2461,7 +2495,7 @@ def statistic(res_table, test_file):
     print("f1_comp = " + f1.__str__())
     print("N_of_pred_comp = " + N_of_result.__str__())
     print("N_of_ans_comp = " + N_of_test.__str__())
-    return {"p_comp": p, "r_comp": r, "f1_comp": f1, "N_of_pred_comp": N_of_result, "N_of_ans_comp": N_of_test}
+    return {"p_comp": p, "r_comp": r, "f1_comp": f1, "N_of_pred_comp": N_of_result, "N_of_ans_comp": N_of_test, "num_ans_comp": num_label, "num_pred_comp": num_result, "correct_comp": match}
 
 
 def main():
@@ -2484,27 +2518,28 @@ def main():
     # 6."datasets/hyperace05_processed_data/hyperace05_event"
     # 7."datasets/hyperace05_processed_data/hyperace05_role"
     # 8."datasets/hyperace05_processed_data/hyperace05_hypergraph"
-    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bertlarge-42", type=str) 
-    # 1."hyperredre_models/hyperredre_hyperrelation-bertlarge-42"
-    # 2."hyperredre_models/hyperredre_event-bertlarge-42"
-    # 3."hyperredre_models/hyperredre_role-bertlarge-42"
-    # 4."hyperredre_models/hyperredre_hypergraph-bertlarge-42"
-    # 5."hyperace05re_models/hyperace05re_hyperrelation-bertlarge-42"
-    # 6."hyperace05re_models/hyperace05re_event-bertlarge-42"
-    # 7."hyperace05re_models/hyperace05re_role-bertlarge-42"
-    # 8."hyperace05re_models/hyperace05re_hypergraph-bertlarge-42"
+    parser.add_argument("--output_dir", default="hyperredre_models/hyperredre_hyperrelation-bert-42", type=str) 
+    # 1."hyperredre_models/hyperredre_hyperrelation-bert-42"
+    # 2."hyperredre_models/hyperredre_event-bert-42"
+    # 3."hyperredre_models/hyperredre_role-bert-42"
+    # 4."hyperredre_models/hyperredre_hypergraph-bert-42"
+    # 5."hyperace05re_models/hyperace05re_hyperrelation-bert-42"
+    # 6."hyperace05re_models/hyperace05re_event-bert-42"
+    # 7."hyperace05re_models/hyperace05re_role-bert-42"
+    # 8."hyperace05re_models/hyperace05re_hypergraph-bert-42"
     parser.add_argument("--num_train_epochs", default=10.0, type=float) 
     # (hyperred) 1,2,3,4:  10.0 
     # (hyperace05) 5,6,7,8:  100.0
 ##################################################################################################    
     # select-cuda
-    parser.add_argument("--cuda_device", default="0123", type=str) # "0"
+    parser.add_argument("--cuda_device", default="0", type=str) # "0"
 ##################################################################################################
     # select-train/test
+    parser.add_argument('--test_when_update', type=bool, default=True) # True, don't change
     parser.add_argument("--do_train", action='store_true',default=True,
-                        help="Whether to run training.") # True/False
+                        help="Whether to run training.") # True/False, don't change
     parser.add_argument("--do_eval", action='store_true',default=True,
-                        help="Whether to run eval on the dev set.") #True
+                        help="Whether to run eval on the dev set.") #True, don't change
 ##################################################################################################
     # select-bertbase/bertlarge m
     parser.add_argument("--model_type", default="bertsub", type=str, 
@@ -2517,12 +2552,12 @@ def main():
                         help="random seed for initialization") # 42,43,44,45,46
 ##################################################################################################    
     # select-(alpha,q_alpha) a
-    parser.add_argument('--alpha', default=0.2, type=float) #0.5,0.4,0.3,0.2,0.1
-    parser.add_argument('--q_alpha', default=0.2, type=float) #0.5,0.4,0.3,0.2,0.1
+    parser.add_argument('--alpha', default=0.01, type=float) # 1.0, 0.1, 0.01(best), 0.001, 0.0001
+    parser.add_argument('--q_alpha', default=0.01, type=float) # 1.0, 0.1, 0.01(best), 0.001, 0.0001
 ###################################################################################################
     # select-bs/lr p
     parser.add_argument("--per_gpu_train_batch_size", default=2, type=int,
-                        help="Batch size per GPU/CPU for training.") # 8    
+                        help="Batch size per GPU/CPU for training.") # 8
     parser.add_argument("--learning_rate", default=2e-5, type=float,
                         help="The initial learning rate for Adam.") #2e-5
 ###################################################################################################
@@ -2581,8 +2616,8 @@ def main():
     parser.add_argument('--fp16_opt_level', type=str, default='O1',
                         help="For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
                              "See details at https://nvidia.github.io/apex/amp.html")
-    '''parser.add_argument("--local_rank", type=int, default=-1,
-                        help="For distributed training: local_rank")'''
+    parser.add_argument("--local_rank", type=int, default=-1,
+                        help="For distributed training: local_rank")
     parser.add_argument('--server_ip', type=str, default='', help="For distant debugging.")
     parser.add_argument('--server_port', type=str, default='', help="For distant debugging.")
     parser.add_argument('--save_total_limit', type=int, default=1,
@@ -2611,8 +2646,7 @@ def main():
     args = parser.parse_args()
     
     
-    
-    # os.environ['CUDA_VISIBLE_DEVICES']=args.cuda_device
+    os.environ['CUDA_VISIBLE_DEVICES']=args.cuda_device
     # add new dataset labels for entity, relation and qualifier
     label_file = os.path.join(args.data_dir, args.label_file)
     if os.path.exists(label_file):
@@ -2654,7 +2688,7 @@ def main():
         device = torch.device("cuda", args.local_rank)
         torch.distributed.init_process_group(backend='nccl')
         args.n_gpu = 1'''
-    # the nunber of cuda is more than 1
+        
     if len(args.cuda_device) > 1 or args.no_cuda:
         device = ','.join(args.cuda_device)
         os.environ['CUDA_VISIBLE_DEVICES'] = device
@@ -2669,16 +2703,14 @@ def main():
         device = torch.device("cuda", int(args.cuda_device))
         torch.distributed.init_process_group(backend='nccl')
         args.n_gpu = 1
-    args.device = device 
-        
-    # args.device = device
+    args.device = device
 
     # Setup logging
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                         datefmt = '%m/%d/%Y %H:%M:%S',
                         level = logging.INFO if len(args.cuda_device) > 1 else logging.WARN)
     logger.warning("device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
-                    device, args.n_gpu, bool(len(args.cuda_device) > 1), args.fp16)
+                    device, args.n_gpu, bool(not len(args.cuda_device) > 1), args.fp16)
 
     # Set seed
     set_seed(args)
