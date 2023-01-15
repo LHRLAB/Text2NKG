@@ -30,9 +30,8 @@ Install dependencies, The code is based on huggaface's [transformers](https://gi
 pip install -r requirement.txt
 pip install --editable ./transformers
 ```
-Then, we should install [apex](https://github.com/NVIDIA/apex). For SSH environment:
+Then, we should install [apex](https://github.com/NVIDIA/apex).
 ```
-git clone git@github.com:NVIDIA/apex.git
 cd apex
 python setup.py install
 cd ..
