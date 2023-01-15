@@ -2510,7 +2510,7 @@ def main():
     parser.add_argument("--nary_schema",  default="hyperrelation", type=str) 
     # 1."hyperrelation", 2."event" 3."role" 4."hypergraph"
     # 5."hyperrelation", 6."event" 7."role" 8."hypergraph"
-    parser.add_argument("--data_dir", default='datasets/hyperred_processed_data/hyperred_hyperrelation', type=str) 
+    parser.add_argument("--data_dir", default='datasets/hyperred_processed_data/hyperred_event', type=str) 
     # 1."datasets/hyperred_processed_data/hyperred_hyperrelation"
     # 2."datasets/hyperred_processed_data/hyperred_event"
     # 3."datasets/hyperred_processed_data/hyperred_role"
@@ -2646,8 +2646,7 @@ def main():
 
     args = parser.parse_args()
     
-    
-    # os.environ['CUDA_VISIBLE_DEVICES']=args.cuda_device
+    # os.environ['CUDA_VISIBLE_DEVICES']="0,1,2,3"
     # add new dataset labels for entity, relation and qualifier
     label_file = os.path.join(args.data_dir, args.label_file)
     if os.path.exists(label_file):
@@ -2691,10 +2690,17 @@ def main():
         args.n_gpu = 1'''
         
     if len(args.cuda_device) > 0 or args.no_cuda:
+        visible_device=""
+        for x in range(len(args.cuda_device)):
+             visible_device+=str(x)
+        visible_device = ','.join(visible_device)
         device = ','.join(args.cuda_device)
-        # os.environ['CUDA_VISIBLE_DEVICES'] = device
-        device = torch.device("cuda:" + device[0] if torch.cuda.is_available() and not args.no_cuda else "cpu")
+        os.environ['CUDA_VISIBLE_DEVICES'] = device
+        args.cuda_device = visible_device
+        device = torch.device("cuda:" + args.cuda_device[0] if torch.cuda.is_available() and not args.no_cuda else "cpu")
         args.n_gpu = len(args.cuda_device)
+        
+        
     else:  # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.cuda.set_device(int(args.cuda_device))
         os.environ['RANK'] = '0'
