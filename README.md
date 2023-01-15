@@ -32,6 +32,7 @@ pip install --editable ./transformers
 ```
 Then, we should install [apex](https://github.com/NVIDIA/apex).
 ```
+unzip apex.zip
 cd apex
 python setup.py install
 cd ..
