@@ -2528,7 +2528,7 @@ def main():
     # 6."hyperace05re_models/hyperace05re_event-bert-42", "hyperace05re_models/hyperace05re_event-bertlarge-42"
     # 7."hyperace05re_models/hyperace05re_role-bert-42", "hyperace05re_models/hyperace05re_role-bertlarge-42"
     # 8."hyperace05re_models/hyperace05re_hypergraph-bert-42", "hyperace05re_models/hyperace05re_hypergraph-bertlarge-42"
-    parser.add_argument("--num_train_epochs", default=1.0, type=float) 
+    parser.add_argument("--num_train_epochs", default=10.0, type=float) 
     # (hyperred) 1,2,3,4:  10.0 
     # (hyperace05) 5,6,7,8:  100.0
 ##################################################################################################    
