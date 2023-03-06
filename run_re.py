@@ -77,6 +77,13 @@ task_rel_labels = {}
 
 task_q_labels = dict()
 
+def sset(arr):
+    m=[]
+    for i in arr:
+        if i not in m:
+            m.append(i)
+    return m
+
 class ACEDataset(Dataset):
     def __init__(self, tokenizer, args=None, evaluate=False, do_test=False, max_pair_length=None):
         # Dataset file path
@@ -114,14 +121,14 @@ class ACEDataset(Dataset):
         self.ner_label_list = ['NIL'] + task_ner_labels[self.args.dataset]
         self.sym_labels = ['NIL']
         if self.args.nary_schema == "hyperrelation":
-            self.label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
-            +[x+'-1' for x in list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
-            self.q_label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
-            +[x+'-1' for x in list(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
-            self.d= len(set(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))
+            self.label_list = ['NIL'] + list(sset(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
+            +[x+'-1' for x in list(sset(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
+            self.q_label_list = ['NIL'] + list(sset(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))\
+            +[x+'-1' for x in list(sset(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))]
+            self.d= len(sset(task_rel_labels[self.args.dataset]+task_q_labels[self.args.dataset]))
         if self.args.nary_schema == "event" or self.args.nary_schema =="hypergraph" or self.args.nary_schema =="role":
-            self.label_list = ['NIL'] + list(set(task_rel_labels[self.args.dataset]))
-            self.q_label_list = ['NIL'] + list(set(task_q_labels[self.args.dataset]))          
+            self.label_list = ['NIL'] + list(sset(task_rel_labels[self.args.dataset]))
+            self.q_label_list = ['NIL'] + list(sset(task_q_labels[self.args.dataset]))          
 
         self.global_predicted_ners = {}
         self.initialize()
