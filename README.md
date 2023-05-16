@@ -1,5 +1,5 @@
 # Text2NKG
-Text2NKG：Fine-Grained N-ary Relation Extraction for End-to-End N-ary relational Knowledge Graph Completion
+Text2NKG：Fine-Grained N-ary Relation Extraction for End-to-End N-ary relational Knowledge Graph Construction
 
 ## Overview
 ![](./figs/F0.drawio.png)
