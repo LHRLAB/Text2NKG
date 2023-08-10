@@ -1,5 +1,5 @@
 # Text2NKG
-Text2NKG：Fine-Grained N-ary Relation Extraction for End-to-End N-ary relational Knowledge Graph Construction
+Text2NKG：Fine-Grained N-ary Relation Extraction for N-ary relational Knowledge Graph Construction
 
 ## Overview
 ![](./figs/F0.drawio.png)
@@ -34,7 +34,7 @@ cd ..
 ```
 
 ### Datasets
-Our experiments are based on two datasets: HyperRED and HyperACE05. 
+Our experiments are based on HyperRED dataset. 
 
 ### Download PLMs
 
