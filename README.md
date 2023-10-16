@@ -1,5 +1,5 @@
 # Text2NKG
-Text2NKG：Fine-Grained N-ary Relation Extraction for N-ary relational Knowledge Graph Construction
+Text2NKG：Fine-Grained N-ary Relation Extraction for N-ary relational Knowledge Graph Construction \[[paper](https://github.com/LHRLAB/Text2NKG)\].
 
 ## Overview
 ![](./figs/F0.drawio.png)
