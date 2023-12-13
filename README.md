@@ -60,19 +60,3 @@ Train Text2NKG n-ary RE Models:
 python run_re.py
 ```
 
-## BibTex
-
-If you find this work is helpful for your research, please cite:
-
-```bibtex
-@misc{luo2023text2nkg,
-      title={Text2NKG: Fine-Grained N-ary Relation Extraction for N-ary relational Knowledge Graph Construction}, 
-      author={Haoran Luo and Haihong E and Yuhao Yang and Tianyu Yao and Yikai Guo and Zichen Tang and Wentai Zhang and Kaiyang Wan and Shiyao Peng and Meina Song and Wei Lin},
-      year={2023},
-      eprint={2310.05185},
-      archivePrefix={arXiv},
-      primaryClass={cs.AI}
-}
-```
-
-For further questions, please contact: luohaoran@bupt.edu.cn, or wechat: lhr1846205978.
