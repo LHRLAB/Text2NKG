@@ -75,4 +75,4 @@ If you find this work is helpful for your research, please cite:
 }
 ```
 
-For further questions, please contact: luohaoran@bupt.edu.cn, or wechat: lhr1846205978.
+For further questions, please contact: luohaoran@bupt.edu.cn.
