@@ -1,5 +1,6 @@
 # Text2NKG
-Text2NKG: Fine-Grained N-ary Relation Extraction for N-ary relational Knowledge Graph Construction \[[paper](https://arxiv.org/abs/2310.05185)\].
+
+Official resources of **"Text2NKG: Fine-Grained N-ary Relation Extraction for N-ary relational Knowledge Graph Construction"**. Haoran Luo, Haihong E, Yuhao Yang, Tianyu Yao, Yikai Guo, Zichen Tang, Wentai Zhang, Shiyao Peng, Kaiyang Wan, Meina Song, Wei Lin, Yifan Zhu, Luu Anh Tuan. **NeurIPS 2024** \[[paper](https://arxiv.org/abs/2310.05185)\]. 
 
 ## Overview
 ![](./figs/F0.drawio.png)
