@@ -66,7 +66,7 @@ python run_re.py
 If you find this work is helpful for your research, please cite:
 
 ```bibtex
-@inproceedings{NEURIPS2024_305b2288,
+@inproceedings{luo2024text2nkg,
  author = {Luo, Haoran and E, Haihong and Yang, Yuhao and Yao, Tianyu and Guo, Yikai and Tang, Zichen and Zhang, Wentai and Peng, Shiyao and Wan, Kaiyang and Song, Meina and Lin, Wei and Zhu, Yifan and Luu, Anh Tuan},
  booktitle = {Advances in Neural Information Processing Systems},
  editor = {A. Globerson and L. Mackey and D. Belgrave and A. Fan and U. Paquet and J. Tomczak and C. Zhang},
