@@ -8,7 +8,6 @@ Official resources of **"Text2NKG: Fine-Grained N-ary Relation Extraction for N-
 ![](./figs/F2.drawio.png)
 
 
-
 ## Setup
 
 ### Default implementation environment
