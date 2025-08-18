@@ -79,4 +79,4 @@ If you find this work is helpful for your research, please cite:
 
 ```
 
-For further questions, please contact: haoran-luo@outlook.com.
+For further questions, please contact: haoran.luo@ieee.org.
