@@ -66,8 +66,9 @@ If you find this work is helpful for your research, please cite:
 
 ```bibtex
 @inproceedings{luo2024text2nkg,
- author = {Luo, Haoran and E, Haihong and Yang, Yuhao and Yao, Tianyu and Guo, Yikai and Tang, Zichen and Zhang, Wentai and Peng, Shiyao and Wan, Kaiyang and Song, Meina and Lin, Wei and Zhu, Yifan and Luu, Anh Tuan},
+ author = {Luo, Haoran and E, Haihong and Yang, Yuhao and Yao, Tianyu and Guo, Yikai and Tang, Zichen and Zhang, Wentai and Peng, Shiyao and Wan, Kaiyang and Song, Meina and Lin, Wei and Zhu, Yifan and Tuan, Luu Anh},
  booktitle = {Advances in Neural Information Processing Systems},
+ doi = {10.52202/079017-0861},
  editor = {A. Globerson and L. Mackey and D. Belgrave and A. Fan and U. Paquet and J. Tomczak and C. Zhang},
  pages = {27417--27439},
  publisher = {Curran Associates, Inc.},
@@ -76,7 +77,6 @@ If you find this work is helpful for your research, please cite:
  volume = {37},
  year = {2024}
 }
-
 ```
 
 For further questions, please contact: haoran.luo@ieee.org.
